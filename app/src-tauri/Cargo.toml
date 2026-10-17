@@ -1,6 +1,6 @@
 [package]
 name = "stepcast"
-version = "0.4.0"
+version = "0.4.1"
 description = "Screen recorder for support videos, with automatic click and input labels"
 authors = ["Rene Poulsen"]
 license = "MIT"

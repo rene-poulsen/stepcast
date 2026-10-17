@@ -7,12 +7,14 @@ verified with the signing key below.
 ## One-time setup
 
 1. Create the public repo **rene-poulsen/stepcast** on GitHub and push `main`.
-2. Add two repository secrets (**Settings → Secrets and variables → Actions → New repository secret**):
+2. Add one repository secret (**Settings → Secrets and variables → Actions → New repository secret**):
 
    | Name | Value |
    | --- | --- |
    | `TAURI_SIGNING_PRIVATE_KEY` | the full contents of `~/.tauri/stepcast.key` |
-   | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | leave empty (the key has no password); create the secret anyway |
+
+   The key has no password, so `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` isn't needed. (If you ever make a new key
+   with a password, add that as a second secret with this name.)
 
 3. Back up `~/.tauri/stepcast.key` somewhere safe, like your password manager. **If you lose it, installed copies
    can never update again.** The matching public key is already in `app/src-tauri/tauri.conf.json`.

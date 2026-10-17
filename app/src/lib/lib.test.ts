@@ -68,11 +68,20 @@ describe('layout', () => {
       for (const n of [l.screen.x, l.screen.y, l.screen.w, l.screen.h, cam.x, cam.y, cam.w, cam.h]) expect(n % 2).toBe(0);
     }
   });
+  it('uses the same margin at the edges and between screen and webcam', () => {
+    for (const side of ['left', 'right'] as const) {
+      const l = computeLayout(1920, 1080, { enabled: true, split: 0.25, side });
+      const [a, b] = side === 'right' ? [l.screen, l.cam!] : [l.cam!, l.screen];
+      const gaps = [a.x, b.x - (a.x + a.w), l.width - (b.x + b.w)];
+      expect(gaps[0]).toBeGreaterThan(0);
+      expect(new Set(gaps).size).toBe(1);
+    }
+  });
   it('maps desktop coordinates into the scaled screen', () => {
     const l = computeLayout(1920, 1080, { enabled: true, split: 0.25, side: 'left' });
     const r = mapRect({ x: 1920 + 960, y: 540, w: 100, h: 0 }, project.screen, l.screen);
     expect(r.x).toBeCloseTo(l.screen.x + l.screen.w / 2);
-    expect(r.w).toBeCloseTo(75);
+    expect(r.w).toBeCloseTo((100 * l.screen.w) / 1920);
   });
 });
 

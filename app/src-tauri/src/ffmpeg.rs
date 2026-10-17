@@ -390,13 +390,13 @@ mod tests {
     #[test]
     fn webcam_layout_places_screen_and_camera() {
         let mut s = spec();
-        s.screen_box = BoxSpec { x: 0, y: 135, w: 1440, h: 810 };
-        s.cam = Some(CamSpec { area: BoxSpec { x: 1464, y: 236, w: 432, h: 576 }, offset: -0.2, video: true, audio: true });
+        s.screen_box = BoxSpec { x: 28, y: 144, w: 1412, h: 794 };
+        s.cam = Some(CamSpec { area: BoxSpec { x: 1468, y: 258, w: 424, h: 566 }, offset: -0.2, video: true, audio: true });
         let g = build_graph(&s, Path::new("/fonts"));
-        assert!(g.contains("scale=1440:810"));
-        assert!(g.contains("[bg][scr]overlay=0:135"));
-        assert!(g.contains("crop=432:576"));
-        assert!(g.contains("overlay=1464:236"));
+        assert!(g.contains("scale=1412:794"));
+        assert!(g.contains("[bg][scr]overlay=28:144"));
+        assert!(g.contains("crop=424:566"));
+        assert!(g.contains("overlay=1468:258"));
         assert!(g.contains("[1:a]aselect="));
     }
 

@@ -15,7 +15,8 @@ const even = (n: number) => Math.round(n / 2) * 2;
 
 /**
  * The video keeps the recorded screen's size. With a webcam, the screen is scaled down
- * to leave a side panel (`split` = panel share of the width) and is centred vertically.
+ * to leave a side panel (`split` = panel share of the width) and is centred vertically,
+ * with equal margins between the edges, the screen and the webcam.
  */
 export function computeLayout(
   width: number,
@@ -28,15 +29,15 @@ export function computeLayout(
     return { width: W, height: H, screen: { x: 0, y: 0, w: W, h: H }, cam: null, camRadius: 0 };
   }
   const panel = even(W * Math.min(0.45, Math.max(0.1, camera.split)));
-  const area = W - panel;
-  const sw = even(area);
-  const sh = even((H * sw) / W);
   const margin = even(Math.max(8, H * 0.025));
+  // The screen gets the same margin to the outer edge as the webcam has to the edge and to the screen.
+  const sw = even(W - panel - margin);
+  const sh = even((H * sw) / W);
   const cw = even(panel - margin * 2);
   const ch = even(Math.min(H - margin * 2, (cw * 4) / 3));
 
-  const screenX = camera.side === 'left' ? panel : 0;
-  const panelX = camera.side === 'left' ? 0 : area;
+  const screenX = camera.side === 'left' ? panel : margin;
+  const panelX = camera.side === 'left' ? 0 : W - panel;
   return {
     width: W,
     height: H,

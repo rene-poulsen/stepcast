@@ -8,7 +8,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -45,6 +45,9 @@ pub struct SessionMeta {
     /// Recording only this part of the monitor.
     #[serde(default)]
     area: Option<Area>,
+    /// Only the webcam is recorded; `monitor` is just where the pill was shown.
+    #[serde(default)]
+    cam_only: bool,
     /// Epoch ms of the first screen frame; 0 until capture has started.
     t0: i64,
     cam: Option<CamMeta>,
@@ -67,13 +70,16 @@ pub struct Session {
     meta: SessionMeta,
     capture: Option<Capture>,
     cam_file: Option<File>,
+    /// When a webcam-only recording started: its clock, as there is no screen capture.
+    started: Option<Instant>,
 }
 
 impl Session {
     fn video_time(&self) -> f64 {
-        match &self.capture {
-            Some(c) => c.recorded_ms.load(Ordering::Relaxed) as f64 / 1000.0,
-            None => 0.0,
+        match (&self.capture, self.started) {
+            (Some(c), _) => c.recorded_ms.load(Ordering::Relaxed) as f64 / 1000.0,
+            (None, Some(started)) => started.elapsed().as_secs_f64(),
+            (None, None) => 0.0,
         }
     }
 
@@ -97,12 +103,21 @@ pub struct RecordOptions {
     pub area: Option<Area>,
     pub camera: bool,
     pub mic: bool,
+    /// Record only the webcam. `monitor` then only places the pill.
+    #[serde(default)]
+    pub cam_only: bool,
+    /// Output format id ("9:16"), so the pill can show the crop guide.
+    #[serde(default)]
+    pub format: String,
 }
 
-const PILL_WIDTH: f64 = 296.0;
-
-fn pill_height(camera: bool) -> f64 {
-    if camera { 64.0 + 166.0 } else { 64.0 }
+/// The pill's size: a bar, plus a webcam preview that is larger when only the webcam is recorded.
+fn pill_size(camera: bool, cam_only: bool) -> (f64, f64) {
+    match (camera, cam_only) {
+        (_, true) => (360.0, 64.0 + 8.0 + 344.0 * 9.0 / 16.0),
+        (true, false) => (296.0, 64.0 + 166.0),
+        (false, false) => (296.0, 64.0),
+    }
 }
 
 // Async: on Windows, creating a window from a sync command (main thread) deadlocks.
@@ -119,7 +134,8 @@ pub async fn begin_recording(app: AppHandle, state: tauri::State<'_, AppState>, 
     let new = Session {
         dir: dir.clone(),
         meta: SessionMeta {
-            area: options.area.map(|a| a.fit(&options.monitor)),
+            area: options.area.filter(|_| !options.cam_only).map(|a| a.fit(&options.monitor)),
+            cam_only: options.cam_only,
             monitor: options.monitor.clone(),
             t0: 0,
             cam: None,
@@ -128,16 +144,22 @@ pub async fn begin_recording(app: AppHandle, state: tauri::State<'_, AppState>, 
         },
         capture: None,
         cam_file: None,
+        started: None,
     };
     new.save_meta();
     *session = Some(new);
     drop(session);
 
-    let url = format!("index.html?w=pill&camera={}&mic={}", options.camera, options.mic);
-    let height = pill_height(options.camera);
+    let camera = options.camera || options.cam_only;
+    let format: String = options.format.chars().filter(|c| c.is_ascii_alphanumeric() || *c == ':').collect();
+    let url = format!(
+        "index.html?w=pill&camera={camera}&mic={}&camOnly={}&format={format}",
+        options.mic, options.cam_only
+    );
+    let (width, height) = pill_size(camera, options.cam_only);
     let pill = WebviewWindowBuilder::new(&app, "pill", WebviewUrl::App(url.into()))
         .title("Stepcast")
-        .inner_size(PILL_WIDTH, height)
+        .inner_size(width, height)
         .decorations(false)
         .resizable(false)
         .always_on_top(true)
@@ -151,7 +173,7 @@ pub async fn begin_recording(app: AppHandle, state: tauri::State<'_, AppState>, 
     // Bottom-right corner of the monitor being recorded.
     let m = &options.monitor;
     let margin = 24.0 * m.scale;
-    let x = m.x as f64 + m.width as f64 - PILL_WIDTH * m.scale - margin;
+    let x = m.x as f64 + m.width as f64 - width * m.scale - margin;
     let y = m.y as f64 + m.height as f64 - height * m.scale - margin * 3.0;
     let _ = pill.set_position(PhysicalPosition::new(x as i32, y as i32));
     let _ = pill.show();
@@ -186,11 +208,20 @@ pub fn cam_chunk(state: tauri::State<AppState>, request: Request) -> Result<(), 
 pub async fn start_screen(app: AppHandle) -> Result<i64, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let (monitor, area, dir) = {
+        let (monitor, area, dir, cam_only) = {
             let guard = state.session.lock().unwrap();
             let s = guard.as_ref().ok_or("No recording")?;
-            (s.meta.monitor.clone(), s.meta.area, s.dir.clone())
+            (s.meta.monitor.clone(), s.meta.area, s.dir.clone(), s.meta.cam_only)
         };
+        if cam_only {
+            // Nothing to capture: the recording's clock starts now, and browser events aren't kept.
+            let mut guard = state.session.lock().unwrap();
+            let s = guard.as_mut().ok_or("No recording")?;
+            s.started = Some(Instant::now());
+            s.meta.t0 = chrono::Utc::now().timestamp_millis();
+            s.save_meta();
+            return Ok(s.meta.t0);
+        }
         let encoder = state.encoder();
         let mut capture = Capture::start(&state.ffmpeg, &encoder, &monitor, area, &dir)?;
         let t0 = match capture.wait_started(Duration::from_secs(10)) {
@@ -296,35 +327,58 @@ fn build_project(
     duration: Option<f64>,
     recovered: bool,
 ) -> Result<(), String> {
-    // Copy into an indexed MP4 so the editor can play and seek it (WebKit can't play MKV).
-    if remux(ffmpeg_path, dir, "screen.mkv", "screen.mp4").is_ok() {
-        let _ = fs::remove_file(dir.join("screen.mkv"));
-    }
-    let info = probe(ffmpeg_path, dir, "screen.mp4");
-    let duration = duration.filter(|d| *d > 0.0).or(info.duration).ok_or("The screen recording is empty")?;
-    let m = &meta.monitor;
-    // What was recorded, in desktop pixels: the whole monitor or the chosen area.
-    let (x, y, w, h) = match meta.area {
-        Some(a) => (m.x + a.x, m.y + a.y, a.w, a.h),
-        None => (m.x, m.y, m.width, m.height),
-    };
-    let (video_w, video_h) = info.size.unwrap_or((w & !1, h & !1));
-
-    if let Some(start) = meta.paused_at.take() {
-        meta.pauses.push([start, duration]);
-    }
-    let events = events_in_video_time(events, meta.t0, duration);
-
-    let cam = meta.cam.as_ref().filter(|c| dir.join(&c.name).exists()).map(|c| {
+    let cam_meta = meta.cam.clone().filter(|c| dir.join(&c.name).exists());
+    if let Some(c) = &cam_meta {
         // MediaRecorder files have no seek index; a stream copy adds one.
         let tmp = format!("indexed-{}", c.name);
         if remux(ffmpeg_path, dir, &c.name, &tmp).is_ok() {
             let _ = fs::rename(dir.join(&tmp), dir.join(&c.name));
         }
+    }
+    // Seconds from t0 to the camera file's start; negative, as the camera starts first.
+    let cam_offset = cam_meta.as_ref().map_or(0.0, |c| (c.started_at - meta.t0) as f64 / 1000.0);
+
+    let (duration, screen, events) = if meta.cam_only {
+        let c = cam_meta.as_ref().filter(|c| c.has_video).ok_or("The webcam recording is empty")?;
+        let from_file = probe(ffmpeg_path, dir, &c.name).duration.map(|d| d + cam_offset);
+        let duration = duration.filter(|d| *d > 0.0).or(from_file).filter(|d| *d > 0.0).ok_or("The webcam recording is empty")?;
+        (duration, Value::Null, Vec::new())
+    } else {
+        // Copy into an indexed MP4 so the editor can play and seek it (WebKit can't play MKV).
+        if remux(ffmpeg_path, dir, "screen.mkv", "screen.mp4").is_ok() {
+            let _ = fs::remove_file(dir.join("screen.mkv"));
+        }
+        let info = probe(ffmpeg_path, dir, "screen.mp4");
+        let duration = duration.filter(|d| *d > 0.0).or(info.duration).ok_or("The screen recording is empty")?;
+        let m = &meta.monitor;
+        // What was recorded, in desktop pixels: the whole monitor or the chosen area.
+        let (x, y, w, h) = match meta.area {
+            Some(a) => (m.x + a.x, m.y + a.y, a.w, a.h),
+            None => (m.x, m.y, m.width, m.height),
+        };
+        let (video_w, video_h) = info.size.unwrap_or((w & !1, h & !1));
+        let screen = json!({
+            "file": "screen.mp4",
+            "width": video_w,
+            "height": video_h,
+            "x": x,
+            "y": y,
+            "monitorWidth": w,
+            "monitorHeight": h,
+            "scale": m.scale,
+            "area": meta.area.is_some(),
+        });
+        (duration, screen, events_in_video_time(events, meta.t0, duration))
+    };
+
+    if let Some(start) = meta.paused_at.take() {
+        meta.pauses.push([start, duration]);
+    }
+    let cam = cam_meta.as_ref().map(|c| {
         json!({
             "file": c.name,
             "mime": c.mime,
-            "offset": (c.started_at - meta.t0) as f64 / 1000.0,
+            "offset": cam_offset,
             "video": c.has_video,
             "audio": c.has_audio,
         })
@@ -336,17 +390,7 @@ fn build_project(
         "createdAt": created_at(dir),
         "duration": duration,
         "recovered": recovered,
-        "screen": {
-            "file": "screen.mp4",
-            "width": video_w,
-            "height": video_h,
-            "x": x,
-            "y": y,
-            "monitorWidth": w,
-            "monitorHeight": h,
-            "scale": m.scale,
-            "area": meta.area.is_some(),
-        },
+        "screen": screen,
         "cam": cam,
         "pauses": meta.pauses,
         "events": events,
@@ -355,7 +399,11 @@ fn build_project(
     write_json(&dir.join("project.json"), &project)?;
     let _ = fs::remove_file(dir.join(SESSION_FILE));
     let _ = fs::remove_file(dir.join(EVENTS_FILE));
-    let _ = make_thumbnail(ffmpeg_path, dir, (duration / 2.0).min(1.0));
+    let at = (duration / 2.0).min(1.0);
+    let _ = match &cam_meta {
+        Some(c) if meta.cam_only => make_thumbnail(ffmpeg_path, dir, &c.name, at - cam_offset),
+        _ => make_thumbnail(ffmpeg_path, dir, "screen.mp4", at),
+    };
     Ok(())
 }
 
@@ -464,7 +512,7 @@ pub fn recover_interrupted(app: &AppHandle) -> usize {
 }
 
 fn has_media(dir: &Path) -> bool {
-    ["screen.mkv", "screen.mp4"].iter().any(|f| fs::metadata(dir.join(f)).is_ok_and(|m| m.len() > 1024))
+    ["screen.mkv", "screen.mp4", "cam.webm", "cam.mp4"].iter().any(|f| fs::metadata(dir.join(f)).is_ok_and(|m| m.len() > 1024))
 }
 
 fn recover_one(ffmpeg_path: &Path, dir: &Path) -> Result<(), String> {
@@ -536,10 +584,10 @@ fn probe(ffmpeg_path: &Path, dir: &Path, file: &str) -> ffmpeg::MediaInfo {
     ffmpeg::parse_media_info(&String::from_utf8_lossy(&out.stderr))
 }
 
-pub fn make_thumbnail(ffmpeg_path: &Path, dir: &Path, at: f64) -> Result<(), String> {
+pub fn make_thumbnail(ffmpeg_path: &Path, dir: &Path, file: &str, at: f64) -> Result<(), String> {
     let status = ffmpeg::command(ffmpeg_path)
         .current_dir(dir)
-        .args(["-hide_banner", "-loglevel", "error", "-y", "-ss", &format!("{at:.2}"), "-i", "screen.mp4"])
+        .args(["-hide_banner", "-loglevel", "error", "-y", "-ss", &format!("{:.2}", at.max(0.0)), "-i", file])
         .args(["-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "4", "thumb.jpg"])
         .status()
         .map_err(|e| e.to_string())?;

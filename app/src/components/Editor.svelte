@@ -9,9 +9,12 @@
   import { strings } from '../lib/i18n';
   import { loadMeasureFont, measure } from '../lib/measure';
   import { settings } from '../lib/settings.svelte';
-  import { blurSegments, defaultEdits } from '../lib/steps';
+  import { formatsFor } from '../lib/formats';
+  import { isStacked } from '../lib/layout';
+  import { blurSegments, normalizeEdits, viewsFor } from '../lib/steps';
   import { formatTime, toOutput } from '../lib/timeline';
   import type { Edits, Project } from '../lib/types';
+  import FormatPicker from './FormatPicker.svelte';
   import Icon from './Icon.svelte';
   import Preview from './Preview.svelte';
   import Switch from './Switch.svelte';
@@ -34,6 +37,12 @@
   const t = $derived(strings(edits?.lang ?? settings.lang));
   const r = $derived(project && edits && fontReady ? render(project, edits, measure) : null);
   const blurs = $derived(project ? blurSegments(project) : []);
+  const views = $derived(project ? viewsFor(project) : []);
+  const viewLabel = { both: () => t.sourceBoth, screen: () => t.sourceScreen, cam: () => t.sourceCam };
+  const stacked = $derived(!!r && isStacked(r.layout));
+  const sides = $derived(stacked ? (['top', 'bottom'] as const) : (['left', 'right'] as const));
+  /** Steps and effects belong to the screen, so they are hidden when it isn't shown. */
+  const showsScreen = $derived(!!r?.layout.screen);
   const current = $derived.by(() => {
     if (!r) return -1;
     let idx = -1;
@@ -82,7 +91,8 @@
   }
 
   async function exportGuide() {
-    if (!project || !r) return;
+    if (!project?.screen || !r) return;
+    const screen = project.screen;
     const steps = r.steps.filter((s) => !s.deleted);
     if (!steps.length) return;
     busy = 'guide';
@@ -95,7 +105,7 @@
         const time = s.time + 0.15;
         return { time, blurs: edits!.blur ? blurs.filter((b) => time >= b.start && time <= b.end) : [] };
       });
-      const { width, height } = project.screen;
+      const { width, height } = screen;
       const images = await api.extractFrames(dir, frames, width, height, joinPath(out, 'img'));
       const title = project.title || t.untitled;
       const gs = guideSteps(project, steps, images);
@@ -113,8 +123,9 @@
     api
       .loadProject(dir)
       .then((p) => {
-        // Fill in settings added in newer versions.
-        edits = { ...defaultEdits(p, settings.lang), ...p.edits };
+        // A new recording starts in the format picked for its source; older edits get new settings filled in.
+        const source = !p.screen ? 'cam' : p.cam?.video ? 'both' : 'screen';
+        edits = normalizeEdits(p, p.edits ?? {}, settings.lang, p.edits ? undefined : settings.formats[source]);
         project = p;
       })
       .catch((err) => (error = String(err)));
@@ -143,7 +154,7 @@
       <input class="title" bind:value={project.title} placeholder={t.untitled} oninput={persist} />
     {/if}
     <div class="actions">
-      <button class="btn" onclick={exportGuide} disabled={!!busy || !r?.steps.length}>
+      <button class="btn" onclick={exportGuide} disabled={!!busy || !project?.screen || !r?.steps.length}>
         <Icon name="guide" />{t.exportGuide}
       </button>
       <button class="btn primary" onclick={exportVideo} disabled={!!busy || !r}>
@@ -210,6 +221,46 @@
 
       <aside>
         <div class="group">
+          <h3>{t.video}</h3>
+          {#if views.length > 1}
+            <div class="views">
+              <div class="segmented" role="radiogroup" aria-label={t.show}>
+                {#each views as v (v)}
+                  <button class:on={edits.view === v} onclick={() => ((edits!.view = v), persist())}>{viewLabel[v]()}</button>
+                {/each}
+              </div>
+            </div>
+          {/if}
+          <div class="format">
+            <FormatPicker formats={formatsFor(!!project.screen)} bind:value={edits.format} lang={edits.lang} onchange={persist} />
+          </div>
+          {#if r.layout.screen && r.layout.cam}
+            {#if !stacked}
+              <div class="row">
+                <span class="muted">{t.camSize}</span>
+                <input type="range" min="0.15" max="0.4" step="0.01" bind:value={edits.camera.split} onchange={persist} />
+              </div>
+            {/if}
+            <div class="row">
+              <span class="muted">{t.layout}</span>
+              <div class="segmented">
+                {#each sides as side, i (side)}
+                  {@const on = (edits.camera.side === 'left' || edits.camera.side === 'top') === (i === 0)}
+                  <button class:on onclick={() => ((edits!.camera.side = side), persist())}>{t[side]}</button>
+                {/each}
+              </div>
+            </div>
+          {/if}
+          {#if r.layout.cam}
+            <div class="row">
+              <span class="muted">{t.framing}</span>
+              <input type="range" min="0" max="1" step="0.01" bind:value={edits.camera.focusX} oninput={persist} />
+            </div>
+          {/if}
+        </div>
+
+        {#if showsScreen}
+        <div class="group">
           <div class="group-head">
             <h3>{t.stepsTitle}</h3>
             <div class="segmented">
@@ -251,39 +302,6 @@
           {/if}
         </div>
 
-        {#if project.cam?.video}
-          <div class="group">
-            <div class="group-head">
-              <h3>{t.layout}</h3>
-              <Switch bind:checked={edits.camera.enabled} onchange={persist} label={t.camOn} />
-            </div>
-            {#if edits.camera.enabled}
-              <div class="row">
-                <span class="muted">{t.camSize}</span>
-                <input
-                  type="range"
-                  min="0.15"
-                  max="0.4"
-                  step="0.01"
-                  bind:value={edits.camera.split}
-                  onchange={persist}
-                />
-              </div>
-              <div class="row">
-                <span></span>
-                <div class="segmented">
-                  <button class:on={edits.camera.side === 'left'} onclick={() => ((edits!.camera.side = 'left'), persist())}>
-                    {t.left}
-                  </button>
-                  <button class:on={edits.camera.side === 'right'} onclick={() => ((edits!.camera.side = 'right'), persist())}>
-                    {t.right}
-                  </button>
-                </div>
-              </div>
-            {/if}
-          </div>
-        {/if}
-
         <div class="group">
           <h3>{t.effects}</h3>
           <label class="row"><span>{t.ripple}</span><Switch bind:checked={edits.ripple} onchange={persist} /></label>
@@ -292,6 +310,7 @@
           <label class="row"><span>{t.keyboard}</span><Switch bind:checked={edits.keyboard} onchange={persist} /></label>
           <label class="row"><span>{t.zoom}</span><Switch bind:checked={edits.zoom} onchange={persist} /></label>
         </div>
+        {/if}
       </aside>
     </div>
   {/if}
@@ -529,6 +548,22 @@
     justify-content: space-between;
     gap: 12px;
     min-height: 34px;
+  }
+
+  .format {
+    margin: 4px 0 8px;
+  }
+
+  .views {
+    margin-bottom: 12px;
+  }
+
+  .views .segmented {
+    display: flex;
+  }
+
+  .views button {
+    flex: 1;
   }
 
   .row input[type='range'] {

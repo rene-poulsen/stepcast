@@ -1,6 +1,7 @@
 // Turns a project + edits into the overlay and the spec the Rust export runs.
 import type { ExportSpec } from './api';
 import { buildAss, overlayItems, type AssInput, type Measure, type Overlay } from './ass';
+import { outputSize } from './formats';
 import { BACKGROUND, computeLayout, type Layout } from './layout';
 import { blurSegments, buildSteps, projectKeeps, type Step } from './steps';
 import { outputDuration, type Range } from './timeline';
@@ -19,7 +20,13 @@ export interface Render {
 }
 
 export function projectLayout(project: Project, edits: Edits): Layout {
-  return computeLayout(project.screen.width, project.screen.height, project.cam?.video ? edits.camera : null);
+  const showScreen = edits.view !== 'cam' || !project.cam?.video;
+  const showCam = edits.view !== 'screen' || !project.screen;
+  return computeLayout(
+    outputSize(edits.format, project.screen),
+    showScreen ? project.screen : null,
+    showCam && project.cam?.video ? edits.camera : null,
+  );
 }
 
 export function render(project: Project, edits: Edits, measure: Measure): Render {
@@ -27,7 +34,7 @@ export function render(project: Project, edits: Edits, measure: Measure): Render
   const keeps = projectKeeps(project, edits);
   const duration = outputDuration(keeps);
   const steps = buildSteps(project, edits);
-  const zoom = edits.zoom ? zoomTrack(project, steps) : [];
+  const zoom = edits.zoom && layout.screen ? zoomTrack(project, steps) : [];
   const input: AssInput = { project, layout, steps, duration, ripple: edits.ripple, highlight: edits.highlight, measure, zoom };
   return { layout, keeps, duration, steps, zoom, overlay: overlayItems(input), ass: buildAss(input) };
 }
@@ -38,13 +45,19 @@ export function exportSpec(project: Project, edits: Edits, r: Render): ExportSpe
   return {
     width: r.layout.width,
     height: r.layout.height,
-    srcWidth: project.screen.width,
-    srcHeight: project.screen.height,
+    srcWidth: project.screen?.width ?? 0,
+    srcHeight: project.screen?.height ?? 0,
     keeps: r.keeps,
-    blurs: edits.blur ? blurSegments(project) : [],
+    blurs: edits.blur && r.layout.screen ? blurSegments(project) : [],
     screenBox: r.layout.screen,
     cam: useCam
-      ? { box: r.layout.cam ?? { x: 0, y: 0, w: 2, h: 2 }, offset: cam.offset, video: !!r.layout.cam, audio: cam.audio }
+      ? {
+          box: r.layout.cam ?? { x: 0, y: 0, w: 2, h: 2 },
+          offset: cam.offset,
+          video: !!r.layout.cam,
+          audio: cam.audio,
+          focusX: r.layout.camFocus,
+        }
       : null,
     background: BACKGROUND,
     duration: r.duration,

@@ -2,11 +2,13 @@
   import { listen } from '@tauri-apps/api/event';
   import { onMount } from 'svelte';
   import { api, fileUrl, type AppInfo, type ExtStatus } from '../lib/api';
+  import { formatRatio, formatsFor } from '../lib/formats';
   import { strings } from '../lib/i18n';
-  import { saveSettings, settings } from '../lib/settings.svelte';
+  import { saveSettings, settings, type Source } from '../lib/settings.svelte';
   import { formatTime } from '../lib/timeline';
   import type { Monitor, ProjectSummary } from '../lib/types';
   import { checkForUpdate } from '../lib/update.svelte';
+  import FormatPicker from './FormatPicker.svelte';
   import Icon from './Icon.svelte';
   import Setup from './Setup.svelte';
   import Switch from './Switch.svelte';
@@ -28,6 +30,16 @@
   let preview = $state<HTMLVideoElement | null>(null);
   let stream: MediaStream | null = null;
 
+  const hasScreen = $derived(settings.source !== 'cam');
+  const hasCam = $derived(settings.source !== 'screen');
+  const sources: { id: Source; icon: 'monitor' | 'screenCam' | 'camera'; label: () => string }[] = [
+    { id: 'screen', icon: 'monitor', label: () => t.sourceScreen },
+    { id: 'both', icon: 'screenCam', label: () => t.sourceBoth },
+    { id: 'cam', icon: 'camera', label: () => t.sourceCam },
+  ];
+  /** Webcam-only recordings are cropped to the format; the preview shows what stays in. */
+  const guide = $derived(settings.source === 'cam' ? formatRatio(settings.formats.cam, null) : null);
+
   const isMac = $derived(info?.platform === 'macos');
   const shortcut = $derived(isMac ? '⌘ ⌥ R' : 'Ctrl Alt R');
   const extOutdated = $derived(!!info && !!ext.version && ext.connected > 0 && ext.version !== info.version);
@@ -40,17 +52,28 @@
 
   async function startPreview() {
     stopPreview();
-    if (!settings.camera) return;
+    if (!hasCam) return;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: settings.cameraId ? { deviceId: { exact: settings.cameraId } } : true,
+        video: {
+          deviceId: settings.cameraId ? { exact: settings.cameraId } : undefined,
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
       });
       if (preview) preview.srcObject = stream;
       await refreshDevices();
     } catch (err) {
       error = `${t.webcam}: ${err}`;
-      settings.camera = false;
+      settings.source = 'screen';
     }
+  }
+
+  function setSource(source: Source) {
+    settings.source = source;
+    saveSettings();
+    if (hasCam) startPreview();
+    else stopPreview();
   }
 
   function stopPreview() {
@@ -84,14 +107,21 @@
     stopPreview();
     try {
       let area = null;
-      if (settings.mode === 'area') {
+      if (hasScreen && settings.mode === 'area') {
         area = await api.pickArea(monitor);
         if (!area) {
           startPreview();
           return;
         }
       }
-      await api.beginRecording({ monitor, area, camera: settings.camera, mic: settings.mic });
+      await api.beginRecording({
+        monitor,
+        area,
+        camera: hasCam,
+        mic: settings.mic,
+        camOnly: settings.source === 'cam',
+        format: settings.formats[settings.source],
+      });
     } catch (err) {
       error = `${t.recordingFailed}: ${err}`;
       startPreview();
@@ -127,7 +157,7 @@
     loadProjects();
     refreshDevices();
     checkForUpdate();
-    if (settings.camera) startPreview();
+    if (hasCam) startPreview();
     if (!settings.onboarded) showSetup = true;
 
     const offs = [
@@ -188,20 +218,31 @@
         <p class="muted">{t.recordHint} <kbd>{shortcut}</kbd></p>
       </div>
 
+      <div class="sources" role="radiogroup" aria-label={t.source}>
+        {#each sources as s (s.id)}
+          <button role="radio" aria-checked={settings.source === s.id} class:on={settings.source === s.id} onclick={() => setSource(s.id)}>
+            <Icon name={s.icon} size={22} />
+            <span>{s.label()}</span>
+          </button>
+        {/each}
+      </div>
+
       <div class="options">
-        <div class="option">
-          <Icon name="monitor" />
-          <span>{t.recordWhat}</span>
-          <div class="segmented">
-            <button class:on={settings.mode === 'screen'} onclick={() => ((settings.mode = 'screen'), saveSettings())}>
-              {t.wholeScreen}
-            </button>
-            <button class:on={settings.mode === 'area'} onclick={() => ((settings.mode = 'area'), saveSettings())}>
-              {t.area}
-            </button>
+        {#if hasScreen}
+          <div class="option">
+            <Icon name="monitor" />
+            <span>{t.recordWhat}</span>
+            <div class="segmented">
+              <button class:on={settings.mode === 'screen'} onclick={() => ((settings.mode = 'screen'), saveSettings())}>
+                {t.wholeScreen}
+              </button>
+              <button class:on={settings.mode === 'area'} onclick={() => ((settings.mode = 'area'), saveSettings())}>
+                {t.area}
+              </button>
+            </div>
           </div>
-        </div>
-        {#if monitors.length > 1}
+        {/if}
+        {#if hasScreen && monitors.length > 1}
           <div class="option">
             <Icon name="monitor" />
             <span>{t.screen}</span>
@@ -213,19 +254,18 @@
           </div>
         {/if}
 
-        <div class="option">
-          <Icon name="camera" />
-          <span>{t.webcam}</span>
-          {#if settings.camera && cameras.length > 1}
+        {#if hasCam && cameras.length > 1}
+          <div class="option">
+            <Icon name="camera" />
+            <span>{t.webcam}</span>
             <select class="select" bind:value={settings.cameraId} onchange={() => (saveSettings(), startPreview())}>
               <option value="">{t.defaultDevice}</option>
               {#each cameras.filter((c) => c.deviceId) as c (c.deviceId)}
                 <option value={c.deviceId}>{c.label || t.webcam}</option>
               {/each}
             </select>
-          {/if}
-          <Switch bind:checked={settings.camera} onchange={() => (saveSettings(), settings.camera ? startPreview() : stopPreview())} />
-        </div>
+          </div>
+        {/if}
 
         <div class="option">
           <Icon name="mic" />
@@ -240,11 +280,26 @@
           {/if}
           <Switch bind:checked={settings.mic} onchange={() => (saveSettings(), askMic())} />
         </div>
+
+        <div class="option format">
+          <span class="format-head">{t.format}</span>
+          <FormatPicker
+            formats={formatsFor(hasScreen)}
+            bind:value={settings.formats[settings.source]}
+            lang={settings.lang}
+            onchange={saveSettings}
+          />
+        </div>
       </div>
 
-      {#if settings.camera}
-        <!-- svelte-ignore a11y_media_has_caption -->
-        <video class="cam-preview" bind:this={preview} autoplay muted playsinline></video>
+      {#if hasCam}
+        <div class="cam-preview">
+          <!-- svelte-ignore a11y_media_has_caption -->
+          <video bind:this={preview} autoplay muted playsinline></video>
+          {#if guide}
+            <span class="guide" style="aspect-ratio:{guide};{guide > 16 / 9 ? 'width:100%' : 'height:100%'}"></span>
+          {/if}
+        </div>
       {/if}
 
       {#if error}<p class="error">{error}</p>{/if}
@@ -438,7 +493,7 @@
     flex-direction: column;
     width: 100%;
     max-width: 420px;
-    margin-top: 28px;
+    margin-top: 12px;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     text-align: left;
@@ -466,14 +521,77 @@
     max-width: 180px;
   }
 
+  .sources {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    width: 100%;
+    max-width: 420px;
+    margin-top: 28px;
+  }
+
+  .sources button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .sources button:hover {
+    background: var(--hover);
+  }
+
+  .sources button.on {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .option.format {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 12px 14px;
+  }
+
+  .option > .format-head {
+    flex: none;
+  }
+
   .cam-preview {
-    width: 220px;
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 260px;
     margin-top: 16px;
     border-radius: var(--radius);
     background: var(--surface-2);
-    transform: scaleX(-1);
     aspect-ratio: 16 / 9;
+    overflow: hidden;
+  }
+
+  .cam-preview video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     object-fit: cover;
+    transform: scaleX(-1);
+  }
+
+  /* What a webcam-only video keeps: the rest is darkened. */
+  .guide {
+    position: relative;
+    border: 1.5px solid rgba(255, 255, 255, 0.9);
+    border-radius: 4px;
+    box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.45);
   }
 
   .error {

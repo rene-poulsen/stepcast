@@ -36,41 +36,48 @@
   let screenEl = $state<HTMLVideoElement | null>(null);
   let camEl = $state<HTMLVideoElement | null>(null);
 
-  const screenSrc = $derived(fileUrl(joinPath(dir, project.screen.file)));
+  // Recording time comes from the screen video; webcam-only recordings use the camera file instead.
+  const camOffset = $derived(project.cam?.offset ?? 0);
+  const master = $derived(project.screen ? screenEl : camEl);
+  const getTime = (el: HTMLVideoElement) => (project.screen ? el.currentTime : el.currentTime + camOffset);
+  const setTime = (el: HTMLVideoElement, t: number) => (el.currentTime = project.screen ? t : Math.max(0, t - camOffset));
+
+  const screen = $derived(project.screen ?? { file: '', width: 1, height: 1 });
+  const screenSrc = $derived(project.screen ? fileUrl(joinPath(dir, project.screen.file)) : null);
   const camSrc = $derived(project.cam ? fileUrl(joinPath(dir, project.cam.file)) : null);
   const out = $derived(toOutput(time, keeps));
-  const view = $derived(viewAt(zoom, out ?? 0, project.screen.width, project.screen.height));
+  const view = $derived(viewAt(zoom, out ?? 0, screen.width, screen.height));
   /** Position inside the screen video, in percent of it. */
   const inVideo = (b: { x: number; y: number; w: number; h: number }) =>
-    `left:${(b.x / project.screen.width) * 100}%;top:${(b.y / project.screen.height) * 100}%;width:${(b.w / project.screen.width) * 100}%;height:${(b.h / project.screen.height) * 100}%`;
+    `left:${(b.x / screen.width) * 100}%;top:${(b.y / screen.height) * 100}%;width:${(b.w / screen.width) * 100}%;height:${(b.h / screen.height) * 100}%`;
 
   const pct = (b: Box) =>
     `left:${(b.x / layout.width) * 100}%;top:${(b.y / layout.height) * 100}%;width:${(b.w / layout.width) * 100}%;height:${(b.h / layout.height) * 100}%`;
 
   export function seek(t: number) {
-    if (!screenEl) return;
-    screenEl.currentTime = Math.max(0, Math.min(project.duration, t));
-    time = screenEl.currentTime;
+    if (!master) return;
+    setTime(master, Math.max(0, Math.min(project.duration, t)));
+    time = getTime(master);
     syncCam(true);
   }
 
   export async function toggle() {
-    if (!screenEl) return;
+    if (!master) return;
     if (playing) {
-      screenEl.pause();
+      master.pause();
       return;
     }
-    const t = screenEl.currentTime;
+    const t = getTime(master);
     const last = keeps[keeps.length - 1];
     if (!last) return;
     if (t >= last[1] - 0.05) seek(keeps[0][0]);
     else if (toOutput(t, keeps) === null) seek(nextKeepStart(t, keeps) ?? keeps[0][0]);
-    await screenEl.play();
+    await master.play();
   }
 
   function syncCam(force = false) {
-    if (!camEl || !screenEl || !project.cam) return;
-    const target = screenEl.currentTime - project.cam.offset;
+    if (!camEl || !screenEl || !project.cam || !project.screen) return;
+    const target = screenEl.currentTime - camOffset;
     if (target < 0 || (camEl.duration && target > camEl.duration)) {
       camEl.pause();
       return;
@@ -81,14 +88,14 @@
   }
 
   function tick() {
-    if (!screenEl) return;
-    const t = screenEl.currentTime;
+    if (!master) return;
+    const t = getTime(master);
     time = t;
     if (playing) {
       const next = nextKeepStart(t, keeps);
       const last = keeps[keeps.length - 1];
-      if (next !== null) screenEl.currentTime = next;
-      else if (!last || t >= last[1]) screenEl.pause();
+      if (next !== null) setTime(master, next);
+      else if (!last || t >= last[1]) master.pause();
     }
     syncCam();
   }
@@ -109,27 +116,30 @@
     class="stage"
     style="aspect-ratio:{layout.width}/{layout.height};--ar:{layout.width / layout.height};background:#{BACKGROUND}"
   >
-    <div class="screen" style={pct(layout.screen)}>
-      <div
-        class="view"
-        style="transform:scale({view.z}) translate({(-view.x / project.screen.width) * 100}%, {(-view.y / project.screen.height) * 100}%)"
-      >
-        <!-- svelte-ignore a11y_media_has_caption -->
-        <video
-          bind:this={screenEl}
-          src={screenSrc}
-          muted
-          preload="auto"
-          playsinline
-          onplay={() => (playing = true)}
-          onpause={() => (playing = false)}
-          onclick={toggle}
-        ></video>
-        {#each blurs.filter((b) => time >= b.start && time <= b.end) as b}
-          <div class="blur" style={inVideo(b)}></div>
-        {/each}
+    {#if screenSrc}
+      <!-- Stays mounted when only the webcam is shown: it is still the clock. -->
+      <div class="screen" class:hidden={!layout.screen} style={layout.screen ? pct(layout.screen) : ''}>
+        <div
+          class="view"
+          style="transform:scale({view.z}) translate({(-view.x / screen.width) * 100}%, {(-view.y / screen.height) * 100}%)"
+        >
+          <!-- svelte-ignore a11y_media_has_caption -->
+          <video
+            bind:this={screenEl}
+            src={screenSrc}
+            muted
+            preload="auto"
+            playsinline
+            onplay={() => (playing = true)}
+            onpause={() => (playing = false)}
+            onclick={toggle}
+          ></video>
+          {#each blurs.filter((b) => time >= b.start && time <= b.end) as b}
+            <div class="blur" style={inVideo(b)}></div>
+          {/each}
+        </div>
       </div>
-    </div>
+    {/if}
     {#if camSrc}
       <!-- svelte-ignore a11y_media_has_caption -->
       <video
@@ -139,10 +149,14 @@
         class:hidden={!layout.cam}
         style={layout.cam
           ? pct(layout.cam) +
-            `;border-radius:${(layout.camRadius / layout.cam.w) * 100}% / ${(layout.camRadius / layout.cam.h) * 100}%`
+            `;border-radius:${(layout.camRadius / layout.cam.w) * 100}% / ${(layout.camRadius / layout.cam.h) * 100}%` +
+            `;object-position:${layout.camFocus * 100}% 50%`
           : ''}
         preload="auto"
         playsinline
+        onplay={() => !project.screen && (playing = true)}
+        onpause={() => !project.screen && (playing = false)}
+        onclick={() => !project.screen && toggle()}
       ></video>
     {/if}
     <Overlay items={overlay} width={layout.width} height={layout.height} t={out} />
@@ -197,7 +211,8 @@
     object-fit: cover;
   }
 
-  .cam.hidden {
+  .cam.hidden,
+  .screen.hidden {
     width: 1px;
     height: 1px;
     opacity: 0;

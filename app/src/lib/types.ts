@@ -1,4 +1,5 @@
 import type { BlurEvent, Rect, StepEvent } from '../../../shared/events';
+import type { FormatId } from './formats';
 
 export type Lang = 'en' | 'da';
 
@@ -32,27 +33,43 @@ export interface Project {
   version: 1;
   title: string;
   createdAt: string;
-  /** Seconds of screen recording. */
+  /** Seconds of recording (from the first screen frame, or the start of a webcam-only recording). */
   duration: number;
-  /** Video size in pixels; x/y and monitor size are physical desktop pixels of the recorded monitor. */
-  screen: {
-    file: string;
-    width: number;
-    height: number;
-    x: number;
-    y: number;
-    monitorWidth: number;
-    monitorHeight: number;
-    scale: number;
-    /** Only an area of the monitor was recorded. */
-    area?: boolean;
-  };
+  /** Null when only the webcam was recorded. */
+  screen: Screen | null;
+  /** `offset`: seconds from the recording's start to the camera file's start (usually negative). */
   cam: { file: string; mime: string; offset: number; video: boolean; audio: boolean } | null;
   pauses: [number, number][];
   events: (TimedStep | TimedBlur)[];
   edits: Edits | null;
   /** Rebuilt from an interrupted recording. */
   recovered?: boolean;
+}
+
+/** Video size in pixels; x/y and monitor size are physical desktop pixels of the recorded monitor. */
+export interface Screen {
+  file: string;
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+  monitorWidth: number;
+  monitorHeight: number;
+  scale: number;
+  /** Only an area of the monitor was recorded. */
+  area?: boolean;
+}
+
+/** What the video shows: screen and webcam, only the screen, or only the webcam. */
+export type View = 'both' | 'screen' | 'cam';
+
+export interface CameraEdit {
+  /** Share of the width taken by the webcam panel (side-by-side layouts). */
+  split: number;
+  /** Where the webcam goes; left/right in landscape formats, top/bottom in portrait ones. */
+  side: 'left' | 'right' | 'top' | 'bottom';
+  /** Which part of the webcam image shows when it is cropped: 0 = left edge, 1 = right edge. */
+  focusX: number;
 }
 
 export interface StepEdit {
@@ -66,7 +83,9 @@ export interface Edits {
   trim: [number, number];
   /** Keyed by the event's index in `project.events`. */
   steps: Record<number, StepEdit>;
-  camera: { enabled: boolean; split: number; side: 'left' | 'right' };
+  view: View;
+  format: FormatId;
+  camera: CameraEdit;
   blur: boolean;
   ripple: boolean;
   highlight: boolean;

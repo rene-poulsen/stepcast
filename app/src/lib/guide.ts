@@ -13,6 +13,7 @@ const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 export function guideSteps(project: Project, steps: Step[], images: string[]): GuideStep[] {
+  if (!project.screen) return [];
   const { x, y, monitorWidth: width, monitorHeight: height } = project.screen;
   return steps.map((step, i) => {
     const r = step.event.action === 'navigate' ? undefined : step.event.rect;

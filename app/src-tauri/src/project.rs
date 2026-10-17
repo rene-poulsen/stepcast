@@ -92,10 +92,14 @@ pub fn run_export(
     let project = read_json(&dir.join("project.json"))?;
     fs::write(dir.join("overlay.ass"), ass).map_err(|e| e.to_string())?;
     fs::write(dir.join("export-graph.txt"), ffmpeg::build_graph(spec, fonts)).map_err(|e| e.to_string())?;
-    let screen = project["screen"]["file"].as_str().unwrap_or("screen.mp4");
-
     let mut cmd = ffmpeg::command(ffmpeg_path);
-    cmd.current_dir(dir).args(["-hide_banner", "-nostats", "-progress", "pipe:1", "-y", "-i", screen]);
+    cmd.current_dir(dir).args(["-hide_banner", "-nostats", "-progress", "pipe:1", "-y"]);
+    // Only the webcam is shown (or recorded): the screen isn't an input at all.
+    if spec.screen_box.is_some() {
+        cmd.args(["-i", project["screen"]["file"].as_str().unwrap_or("screen.mp4")]);
+    } else if spec.cam.as_ref().is_none_or(|c| !c.video) {
+        return Err("Nothing to export".into());
+    }
     if let Some(cam) = &spec.cam {
         let file = project["cam"]["file"].as_str().ok_or("Recording has no camera file")?;
         cmd.args(["-itsoffset", &format!("{:.3}", cam.offset), "-i", file]);

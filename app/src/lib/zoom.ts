@@ -1,7 +1,7 @@
 // "Zoom to clicks": the screen zooms in on each click and zooms out again after a pause.
 // The same keyframes drive the export (an ffmpeg zoompan expression) and the editor preview.
 import type { Step } from './steps';
-import type { Project, Rect } from './types';
+import type { Project, Rect, Screen } from './types';
 
 export const ZOOM = 1.8;
 const ZOOM_IN = 0.6;
@@ -29,13 +29,15 @@ export interface View {
 const ACTIONS_THAT_ZOOM = new Set(['click', 'enter', 'check', 'uncheck', 'select', 'upload', 'expand', 'collapse']);
 
 /** Desktop pixels → screen-video pixels. */
-function toVideo(project: Project, x: number, y: number): { x: number; y: number } {
-  const k = project.screen.width / project.screen.monitorWidth;
-  return { x: (x - project.screen.x) * k, y: (y - project.screen.y) * k };
+function toVideo(screen: Screen, x: number, y: number): { x: number; y: number } {
+  const k = screen.width / screen.monitorWidth;
+  return { x: (x - screen.x) * k, y: (y - screen.y) * k };
 }
 
 export function zoomTrack(project: Project, steps: Step[]): ZoomKey[] {
-  const { width: W, height: H } = project.screen;
+  const screen = project.screen;
+  if (!screen) return [];
+  const { width: W, height: H } = screen;
   const clamp = (v: number, size: number, z: number) => Math.min(Math.max(v, size / (2 * z)), size - size / (2 * z));
   const home = { cx: W / 2, cy: H / 2 };
 
@@ -44,7 +46,7 @@ export function zoomTrack(project: Project, steps: Step[]): ZoomKey[] {
     .map((s) => {
       const e = s.event;
       const p = e.point ?? { x: e.rect!.x + e.rect!.w / 2, y: e.rect!.y + e.rect!.h / 2 };
-      const v = toVideo(project, p.x, p.y);
+      const v = toVideo(screen, p.x, p.y);
       return { t: s.out, x: v.x, y: v.y, cx: clamp(v.x, W, ZOOM), cy: clamp(v.y, H, ZOOM) };
     })
     // Clicks outside the recorded area (when recording an area) don't zoom.
@@ -118,9 +120,10 @@ export function mapThroughView(
   view: View,
   box: { x: number; y: number; w: number; h: number },
 ): Rect {
-  const p = toVideo(project, r.x, r.y);
-  const k = project.screen.width / project.screen.monitorWidth;
-  const s = (box.w / project.screen.width) * view.z;
+  const screen = project.screen!;
+  const p = toVideo(screen, r.x, r.y);
+  const k = screen.width / screen.monitorWidth;
+  const s = (box.w / screen.width) * view.z;
   return { x: box.x + (p.x - view.x) * s, y: box.y + (p.y - view.y) * s, w: r.w * k * s, h: r.h * k * s };
 }
 

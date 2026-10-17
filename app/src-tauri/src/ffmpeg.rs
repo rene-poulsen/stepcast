@@ -177,6 +177,13 @@ pub struct CamSpec {
     pub offset: f64,
     pub video: bool,
     pub audio: bool,
+    /// Which part of the camera image shows when it is cropped to the box: 0 = left, 1 = right.
+    #[serde(default = "centre")]
+    pub focus_x: f64,
+}
+
+fn centre() -> f64 {
+    0.5
 }
 
 /// Everything the export needs. The app UI computes the layout so preview and export match.
@@ -190,7 +197,8 @@ pub struct ExportSpec {
     /// Ranges of source time to keep, in order.
     pub keeps: Vec<[f64; 2]>,
     pub blurs: Vec<BlurSpec>,
-    pub screen_box: BoxSpec,
+    /// Where the screen goes; None when only the webcam is shown (the screen isn't an input then).
+    pub screen_box: Option<BoxSpec>,
     pub cam: Option<CamSpec>,
     pub background: String,
     /// Output duration in seconds, for the progress bar.
@@ -253,42 +261,54 @@ pub fn blur_chain(parts: &mut Vec<String>, blurs: &[BlurSpec], src_w: i64, src_h
     cur
 }
 
-/// Builds the `-filter_complex` graph. Input 0 is the screen, input 1 the camera file.
-/// Outputs `[v]` and, when there is audio, `[a]`.
+/// The ffmpeg input index of the camera file: after the screen, or first when there is no screen.
+pub fn cam_input(spec: &ExportSpec) -> usize {
+    if spec.screen_box.is_some() { 1 } else { 0 }
+}
+
+/// Builds the `-filter_complex` graph. Input 0 is the screen and input 1 the camera file;
+/// without a screen box the camera file is input 0. Outputs `[v]` and, when there is audio, `[a]`.
 pub fn build_graph(spec: &ExportSpec, fonts_dir: &Path) -> String {
     let mut parts: Vec<String> = Vec::new();
-    let cur = blur_chain(&mut parts, &spec.blurs, spec.src_width, spec.src_height, true);
-
     let select = select_expr(&spec.keeps);
-    // zoompan runs after the cuts, so its expressions use output time.
-    let zoom = match &spec.zoom {
-        Some(z) if z.is_safe() => format!(
-            "zoompan=z='{}':x='{}':y='{}':d=1:s={}x{}:fps=30,",
-            z.z, z.x, z.y, spec.src_width, spec.src_height
-        ),
-        _ => String::new(),
-    };
-    parts.push(format!(
-        "[{cur}]select='{select}',setpts=N/FRAME_RATE/TB,{zoom}scale={}:{}:flags=lanczos,setsar=1[scr]",
-        spec.screen_box.w, spec.screen_box.h
-    ));
+    let cam_in = cam_input(spec);
 
-    let full = spec.screen_box == BoxSpec { x: 0, y: 0, w: spec.width, h: spec.height };
-    let mut base = "scr".to_string();
-    if !full || spec.cam.as_ref().is_some_and(|c| c.video) {
+    let background = format!("color=c=0x{}:s={}x{}:r=30[bg]", spec.background, spec.width, spec.height);
+    let mut base = "bg".to_string();
+    if let Some(sb) = spec.screen_box {
+        let cur = blur_chain(&mut parts, &spec.blurs, spec.src_width, spec.src_height, true);
+        // zoompan runs after the cuts, so its expressions use output time.
+        let zoom = match &spec.zoom {
+            Some(z) if z.is_safe() => format!(
+                "zoompan=z='{}':x='{}':y='{}':d=1:s={}x{}:fps=30,",
+                z.z, z.x, z.y, spec.src_width, spec.src_height
+            ),
+            _ => String::new(),
+        };
         parts.push(format!(
-            "color=c=0x{}:s={}x{}:r=30[bg];[bg][scr]overlay={}:{}:shortest=1[lay]",
-            spec.background, spec.width, spec.height, spec.screen_box.x, spec.screen_box.y
+            "[{cur}]select='{select}',setpts=N/FRAME_RATE/TB,{zoom}scale={}:{}:flags=lanczos,setsar=1[scr]",
+            sb.w, sb.h
         ));
-        base = "lay".to_string();
+        let full = sb == BoxSpec { x: 0, y: 0, w: spec.width, h: spec.height };
+        if full && !spec.cam.as_ref().is_some_and(|c| c.video) {
+            base = "scr".to_string();
+        } else {
+            parts.push(format!("{background};[bg][scr]overlay={}:{}:shortest=1[lay]", sb.x, sb.y));
+            base = "lay".to_string();
+        }
+    } else {
+        parts.push(background);
     }
 
     if let Some(cam) = spec.cam.as_ref().filter(|c| c.video) {
         let b = cam.area;
+        let fx = cam.focus_x.clamp(0.0, 1.0);
+        // Without a screen nothing else ends the video, so the camera does.
+        let eof = if spec.screen_box.is_some() { "repeat" } else { "endall" };
         parts.push(format!(
-            "[1:v]fps=30,select='{select}',setpts=N/FRAME_RATE/TB,\
-             scale={}:{}:force_original_aspect_ratio=increase,crop={}:{},setsar=1[cam];\
-             [{base}][cam]overlay={}:{}:eof_action=repeat[withcam]",
+            "[{cam_in}:v]fps=30,select='{select}',setpts=N/FRAME_RATE/TB,\
+             scale={}:{}:force_original_aspect_ratio=increase,crop={}:{}:(iw-ow)*{fx:.3}:(ih-oh)/2,setsar=1[cam];\
+             [{base}][cam]overlay={}:{}:eof_action={eof}[withcam]",
             b.w, b.h, b.w, b.h, b.x, b.y
         ));
         base = "withcam".to_string();
@@ -301,7 +321,7 @@ pub fn build_graph(spec: &ExportSpec, fonts_dir: &Path) -> String {
 
     if spec.cam.as_ref().is_some_and(|c| c.audio) {
         let aselect = select_expr(&spec.keeps);
-        parts.push(format!("[1:a]aselect='{aselect}',asetpts=N/SR/TB,aresample=async=1[a]"));
+        parts.push(format!("[{cam_in}:a]aselect='{aselect}',asetpts=N/SR/TB,aresample=async=1[a]"));
     }
 
     parts.join(";\n")
@@ -355,7 +375,7 @@ mod tests {
             src_height: 1080,
             keeps: vec![[0.0, 4.5], [7.25, 12.0]],
             blurs: vec![],
-            screen_box: BoxSpec { x: 0, y: 0, w: 1920, h: 1080 },
+            screen_box: Some(BoxSpec { x: 0, y: 0, w: 1920, h: 1080 }),
             cam: None,
             background: "F4F4F2".into(),
             duration: 9.25,
@@ -390,14 +410,44 @@ mod tests {
     #[test]
     fn webcam_layout_places_screen_and_camera() {
         let mut s = spec();
-        s.screen_box = BoxSpec { x: 28, y: 144, w: 1412, h: 794 };
-        s.cam = Some(CamSpec { area: BoxSpec { x: 1468, y: 258, w: 424, h: 566 }, offset: -0.2, video: true, audio: true });
+        s.screen_box = Some(BoxSpec { x: 28, y: 144, w: 1412, h: 794 });
+        s.cam = Some(CamSpec {
+            area: BoxSpec { x: 1468, y: 258, w: 424, h: 566 },
+            offset: -0.2,
+            video: true,
+            audio: true,
+            focus_x: 0.5,
+        });
         let g = build_graph(&s, Path::new("/fonts"));
         assert!(g.contains("scale=1412:794"));
         assert!(g.contains("[bg][scr]overlay=28:144"));
-        assert!(g.contains("crop=424:566"));
-        assert!(g.contains("overlay=1468:258"));
+        assert!(g.contains("crop=424:566:(iw-ow)*0.500:(ih-oh)/2"));
+        assert!(g.contains("[1:v]fps=30"));
+        assert!(g.contains("overlay=1468:258:eof_action=repeat"));
         assert!(g.contains("[1:a]aselect="));
+    }
+
+    #[test]
+    fn webcam_only_uses_the_camera_as_the_first_input() {
+        let mut s = spec();
+        s.width = 1080;
+        s.height = 1920;
+        s.screen_box = None;
+        s.blurs = vec![BlurSpec { start: 1.0, end: 2.0, x: 10, y: 10, w: 100, h: 100 }];
+        s.cam = Some(CamSpec {
+            area: BoxSpec { x: 0, y: 0, w: 1080, h: 1920 },
+            offset: -0.3,
+            video: true,
+            audio: true,
+            focus_x: 0.0,
+        });
+        let g = build_graph(&s, Path::new("/fonts"));
+        assert!(g.starts_with("color=c=0xF4F4F2:s=1080x1920:r=30[bg]"));
+        assert!(!g.contains("[scr]") && !g.contains("boxblur") && !g.contains("[1:"));
+        assert!(g.contains("[0:v]fps=30"));
+        assert!(g.contains("crop=1080:1920:(iw-ow)*0.000:(ih-oh)/2"));
+        assert!(g.contains("[bg][cam]overlay=0:0:eof_action=endall"));
+        assert!(g.contains("[0:a]aselect="));
     }
 
     #[test]

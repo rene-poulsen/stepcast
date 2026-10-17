@@ -129,17 +129,21 @@ export interface Overlay {
   ripples: Ripple[];
 }
 
-const labelFontSize = (height: number) => Math.round(Math.max(16, height * 0.026));
+/** Sizes follow the frame's short side, so portrait videos get the same text size as landscape ones. */
+const labelFontSize = (short: number) => Math.round(Math.max(16, short * 0.026));
 
 /** Where and when every label, highlight and ripple appears, in output pixels and seconds. */
 export function overlayItems({ project, layout, steps, duration, ripple, highlight, measure, zoom = [] }: AssInput): Overlay {
-  const { height: H, screen: box } = layout;
+  const { width, height, screen: box } = layout;
+  const out: Overlay = { labels: [], highlights: [], ripples: [] };
+  // Labels, highlights and ripples belong to the screen.
+  if (!box || !project.screen) return out;
+  const H = Math.min(width, height);
   const fontSize = labelFontSize(H);
   const padX = Math.round(fontSize * 0.85);
   const padY = Math.round(fontSize * 0.55);
   const pillH = fontSize + padY * 2;
   const bottom = box.y + box.h - Math.round(H * 0.045);
-  const out: Overlay = { labels: [], highlights: [], ripples: [] };
 
   const visible = steps.filter((s) => !s.deleted && s.text.trim());
   visible.forEach((step, i) => {
@@ -165,8 +169,9 @@ export function overlayItems({ project, layout, steps, duration, ripple, highlig
 
     const e = step.event;
     // Where something on screen ends up in the video at this moment, taking the zoom into account.
-    const view = viewAt(zoom, start, project.screen.width, project.screen.height);
-    const place = (r: Rect) => (zoom.length ? mapThroughView(r, project, view, box) : mapRect(r, project.screen, box));
+    const view = viewAt(zoom, start, project.screen!.width, project.screen!.height);
+    const screen = project.screen!;
+    const place = (r: Rect) => (zoom.length ? mapThroughView(r, project, view, box) : mapRect(r, screen, box));
     const until = Math.min(duration, zoom.length ? stillUntil(zoom, start) : Infinity);
     const inside = (r: Rect) => r.x + r.w > box.x && r.x < box.x + box.w && r.y + r.h > box.y && r.y < box.y + box.h;
     if (highlight && e.rect && e.action !== 'navigate' && inside(place(e.rect))) {
@@ -196,7 +201,7 @@ export function buildAss(input: AssInput): string {
   const { layout, duration } = input;
   const { width: W, height: H } = layout;
   const items = overlayItems(input);
-  const fontSize = labelFontSize(H);
+  const fontSize = labelFontSize(Math.min(W, H));
   const lines: string[] = [];
   const dialogue = (layer: number, start: number, end: number, text: string) =>
     lines.push(`Dialogue: ${layer},${stamp(start)},${stamp(end)},Base,,0,0,0,,${text}`);

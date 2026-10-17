@@ -23,8 +23,15 @@ export interface ExportSpec {
   srcHeight: number;
   keeps: [number, number][];
   blurs: { start: number; end: number; x: number; y: number; w: number; h: number }[];
-  screenBox: { x: number; y: number; w: number; h: number };
-  cam: { box: { x: number; y: number; w: number; h: number }; offset: number; video: boolean; audio: boolean } | null;
+  /** Null when only the webcam is shown. */
+  screenBox: { x: number; y: number; w: number; h: number } | null;
+  cam: {
+    box: { x: number; y: number; w: number; h: number };
+    offset: number;
+    video: boolean;
+    audio: boolean;
+    focusX: number;
+  } | null;
   background: string;
   duration: number;
   /** zoompan expressions of output time, or null for no zoom. */
@@ -35,7 +42,14 @@ export const api = {
   appInfo: () => invoke<AppInfo>('app_info'),
   extStatus: () => invoke<ExtStatus>('ext_status'),
   listMonitors: () => invoke<Monitor[]>('list_monitors'),
-  beginRecording: (options: { monitor: Monitor; area: Area | null; camera: boolean; mic: boolean }) =>
+  beginRecording: (options: {
+    monitor: Monitor;
+    area: Area | null;
+    camera: boolean;
+    mic: boolean;
+    camOnly: boolean;
+    format: string;
+  }) =>
     invoke<string>('begin_recording', { options }),
   camBegin: (mime: string, startedAt: number, video: boolean, audio: boolean) =>
     invoke<void>('cam_begin', { mime, startedAt, video, audio }),

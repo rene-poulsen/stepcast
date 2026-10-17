@@ -74,6 +74,18 @@ const en = {
   deleteStep: 'Remove step',
   restoreStep: 'Restore step',
   jump: 'Jump to step',
+  source: 'What to record',
+  sourceScreen: 'Desktop',
+  sourceBoth: 'Desktop + webcam',
+  sourceCam: 'Webcam',
+  format: 'Format',
+  originalHint: 'Help center, docs',
+  formatNames: { original: 'Original', '16:9': 'Landscape', '9:16': 'Vertical', '4:5': 'Portrait', '1:1': 'Square', '3:4': 'Portrait', '4:3': 'Classic' },
+  video: 'Video',
+  show: 'Show',
+  top: 'Top',
+  bottom: 'Bottom',
+  framing: 'Framing',
 };
 
 type Strings = typeof en;
@@ -151,6 +163,18 @@ const da: Strings = {
   deleteStep: 'Fjern trin',
   restoreStep: 'Gendan trin',
   jump: 'Gå til trin',
+  source: 'Hvad skal optages',
+  sourceScreen: 'Skrivebord',
+  sourceBoth: 'Skrivebord + webcam',
+  sourceCam: 'Webcam',
+  format: 'Format',
+  originalHint: 'Hjælpecenter, dokumentation',
+  formatNames: { original: 'Original', '16:9': 'Liggende', '9:16': 'Lodret', '4:5': 'Portræt', '1:1': 'Kvadrat', '3:4': 'Portræt', '4:3': 'Klassisk' },
+  video: 'Video',
+  show: 'Vis',
+  top: 'Øverst',
+  bottom: 'Nederst',
+  framing: 'Udsnit',
 };
 
 export function strings(lang: Lang): Strings {

@@ -3,14 +3,22 @@
   import { listen } from '@tauri-apps/api/event';
   import { onMount } from 'svelte';
   import { api } from '../lib/api';
+  import { FORMATS, formatRatio, type FormatId } from '../lib/formats';
   import { strings } from '../lib/i18n';
   import { settings } from '../lib/settings.svelte';
   import { formatTime } from '../lib/timeline';
   import Icon from './Icon.svelte';
 
-  let { camera, mic }: { camera: boolean; mic: boolean } = $props();
+  let {
+    camera,
+    mic,
+    camOnly = false,
+    format = '',
+  }: { camera: boolean; mic: boolean; camOnly?: boolean; format?: string } = $props();
 
   const t = $derived(strings(settings.lang));
+  /** Webcam-only videos are cropped to the format; the guide shows what stays in. */
+  const guide = $derived(camOnly && FORMATS.some((f) => f.id === format) ? formatRatio(format as FormatId, null) : null);
   let countdown = $state(3);
   let recording = $state(false);
   let paused = $state(false);
@@ -35,9 +43,11 @@
 
   async function openMedia() {
     if (!camera && !mic) return;
+    // A webcam-only video is the camera image cropped to the format, so it gets the full resolution.
+    const [width, height] = camOnly ? [1920, 1080] : [1280, 720];
     stream = await navigator.mediaDevices.getUserMedia({
       video: camera
-        ? { deviceId: settings.cameraId ? { exact: settings.cameraId } : undefined, width: { ideal: 1280 }, height: { ideal: 720 } }
+        ? { deviceId: settings.cameraId ? { exact: settings.cameraId } : undefined, width: { ideal: width }, height: { ideal: height } }
         : false,
       audio: mic
         ? { deviceId: settings.micId ? { exact: settings.micId } : undefined, echoCancellation: true, noiseSuppression: true }
@@ -51,7 +61,8 @@
     const hasVideo = stream.getVideoTracks().length > 0;
     const hasAudio = stream.getAudioTracks().length > 0;
     const mimeType = pickMime(hasVideo);
-    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4_000_000, audioBitsPerSecond: 128_000 });
+    const videoBitsPerSecond = camOnly ? 8_000_000 : 4_000_000;
+    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond, audioBitsPerSecond: 128_000 });
     recorder.ondataavailable = (e) => {
       if (!e.data.size) return;
       writes = writes.then(async () => api.camChunk(new Uint8Array(await e.data.arrayBuffer())));
@@ -139,6 +150,9 @@
     <div class="cam" data-tauri-drag-region>
       <!-- svelte-ignore a11y_media_has_caption -->
       <video bind:this={video} autoplay muted playsinline></video>
+      {#if guide}
+        <span class="guide" style="aspect-ratio:{guide};{guide > 16 / 9 ? 'width:100%' : 'height:100%'}"></span>
+      {/if}
     </div>
   {/if}
 
@@ -176,9 +190,27 @@
   }
 
   .cam {
+    position: relative;
+    display: grid;
     flex: 1;
     padding: 8px 8px 0;
     min-height: 0;
+    overflow: hidden;
+  }
+
+  .cam > * {
+    grid-area: 1 / 1;
+  }
+
+  /* What a webcam-only video keeps: the rest is darkened. */
+  .guide {
+    place-self: center;
+    max-width: 100%;
+    max-height: 100%;
+    border: 1.5px solid rgba(255, 255, 255, 0.9);
+    border-radius: 6px;
+    box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
   }
 
   video {

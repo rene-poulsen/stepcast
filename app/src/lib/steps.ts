@@ -1,6 +1,7 @@
 import { phrase } from './phrases';
 import { keepRanges, toOutput, type Range } from './timeline';
-import type { Edits, Lang, Project, TimedBlur, TimedStep } from './types';
+import type { FormatId } from './formats';
+import type { Edits, Lang, Project, TimedBlur, TimedStep, View } from './types';
 
 export interface Step {
   /** Index in `project.events`; also the key for edits. */
@@ -18,18 +19,39 @@ export interface Step {
 /** A page load right after clicking a link repeats the click, so it is left out. */
 const NAVIGATE_AFTER_CLICK = 3;
 
-export function defaultEdits(project: Project, lang: Lang): Edits {
+/** What a recording can show: every view needs its video. */
+export function viewsFor(project: Project): View[] {
+  const cam = !!project.cam?.video;
+  if (!project.screen) return cam ? ['cam'] : [];
+  return cam ? ['both', 'screen', 'cam'] : ['screen'];
+}
+
+export function defaultEdits(project: Project, lang: Lang, format?: FormatId): Edits {
   return {
     lang,
     trim: [0, project.duration],
     steps: {},
-    camera: { enabled: project.cam?.video ?? false, split: 0.25, side: 'right' },
+    view: viewsFor(project)[0] ?? 'screen',
+    format: format ?? (project.screen ? 'original' : '16:9'),
+    camera: { split: 0.25, side: 'right', focusX: 0.5 },
     blur: true,
     ripple: true,
     highlight: true,
     zoom: false,
     keyboard: true,
   };
+}
+
+/** Saved edits with settings added in newer versions filled in. */
+export function normalizeEdits(project: Project, saved: Partial<Edits> & { camera?: { enabled?: boolean } }, lang: Lang, format?: FormatId): Edits {
+  const defaults = defaultEdits(project, lang, format);
+  const edits: Edits = { ...defaults, ...saved, camera: { ...defaults.camera, ...saved.camera } };
+  // Before views, the webcam was a switch.
+  if (!saved.view && saved.camera?.enabled === false && project.screen) edits.view = 'screen';
+  if (!viewsFor(project).includes(edits.view)) edits.view = defaults.view;
+  if (edits.format === 'original' && !project.screen) edits.format = defaults.format;
+  delete (edits.camera as { enabled?: boolean }).enabled;
+  return edits;
 }
 
 export function projectKeeps(project: Project, edits: Edits): Range[] {
@@ -67,6 +89,7 @@ export interface BlurSegment {
 export function blurSegments(project: Project): BlurSegment[] {
   const open = new Map<string, { since: number; rects: TimedBlur['rects'] }>();
   const out: BlurSegment[] = [];
+  if (!project.screen) return [];
   const { x, y, width, monitorWidth } = project.screen;
   const k = width / monitorWidth;
   const close = (source: string, until: number) => {

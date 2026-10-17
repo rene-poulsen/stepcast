@@ -24,7 +24,12 @@
 {#if isPicker}
   <Picker />
 {:else if isPill}
-  <Pill camera={params.get('camera') === 'true'} mic={params.get('mic') === 'true'} />
+  <Pill
+    camera={params.get('camera') === 'true'}
+    mic={params.get('mic') === 'true'}
+    camOnly={params.get('camOnly') === 'true'}
+    format={params.get('format') ?? ''}
+  />
 {:else if openDir}
   {#key openDir}
     <Editor dir={openDir} onclose={() => (openDir = null)} />

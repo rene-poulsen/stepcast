@@ -58,6 +58,16 @@ jobs:
       - run: npm test
       - run: npm run build:extension
       - run: node scripts/fetch-ffmpeg.mjs --target ${{ matrix.target }}
+      # The notes also go into latest.json, which the app shows in its "Update available" banner.
+      - name: Read release notes
+        id: notes
+        shell: bash
+        run: |
+          {
+            echo 'body<<STEPCAST_NOTES'
+            cat "docs/releases/${GITHUB_REF_NAME}.md"
+            echo 'STEPCAST_NOTES'
+          } >> "$GITHUB_OUTPUT"
       - uses: tauri-apps/tauri-action@action-v1.0.0
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -66,6 +76,7 @@ jobs:
         with:
           projectPath: app
           releaseId: ${{ needs.draft.outputs.release_id }}
+          releaseBody: ${{ steps.notes.outputs.body }}
           args: ${{ matrix.args }}
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true

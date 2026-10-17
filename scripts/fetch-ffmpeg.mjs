@@ -69,6 +69,11 @@ if (args.includes('--from-path')) {
   execFileSync('lipo', ['-create', arm.bin, x64.bin, '-output', dest]);
   rmSync(arm.work, { recursive: true, force: true });
   rmSync(x64.work, { recursive: true, force: true });
+  // A universal build compiles each architecture on its own, and each looks for its own sidecar name.
+  for (const arch of ['aarch64-apple-darwin', 'x86_64-apple-darwin']) {
+    copyFileSync(dest, join(binDir, `ffmpeg-${arch}`));
+    chmodSync(join(binDir, `ffmpeg-${arch}`), 0o755);
+  }
 } else {
   const url = SOURCES[target];
   if (!url) throw new Error(`No ffmpeg source for ${target}`);

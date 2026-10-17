@@ -214,3 +214,16 @@ export function shortcutLabel(e: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKe
 export function isTextEntry(el: Element): boolean {
   return roleOf(el) === 'textbox' && !(el as HTMLInputElement).readOnly && !(el as HTMLInputElement).disabled;
 }
+
+// "renepoulsen.dk" or "renepoulsen.dk/about" for a page, instead of its <title>. Null for non-web URLs.
+export function pageName(url: string | undefined): string | null {
+  let u: URL;
+  try {
+    u = new URL(url ?? '');
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+  const path = u.pathname.replace(/\/+$/, '');
+  return cleanName(u.hostname.replace(/^www\./, '') + path);
+}

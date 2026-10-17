@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { changeAction, clickAction, findClickTarget, isNativeFormControl, nameOf, roleOf, shortcutLabel } from '../src/naming';
+import { changeAction, clickAction, findClickTarget, isNativeFormControl, nameOf, pageName, roleOf, shortcutLabel } from '../src/naming';
 
 const html = readFileSync(resolve(process.cwd(), 'test/playground.html'), 'utf8');
 
@@ -115,5 +115,14 @@ describe('keyboard shortcuts', () => {
     expect(shortcutLabel(key('Control', { ctrlKey: true }), false)).toBeNull();
     expect(shortcutLabel(key('@', { ctrlKey: true, altKey: true }), false)).toBeNull();
     expect(shortcutLabel(key('å', { altKey: true }), true)).toBeNull();
+  });
+});
+
+describe('page names', () => {
+  it('uses the address, not the title', () => {
+    expect(pageName('https://renepoulsen.dk/')).toBe('renepoulsen.dk');
+    expect(pageName('https://www.acme.com/pricing/?plan=pro#faq')).toBe('acme.com/pricing');
+    expect(pageName('chrome://newtab/')).toBeNull();
+    expect(pageName(undefined)).toBeNull();
   });
 });

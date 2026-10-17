@@ -1,5 +1,6 @@
 // Keeps one WebSocket to the Stepcast app and relays page events to it.
 import { APP_PORT, type AppToExt, type ExtToApp } from '../../shared/events';
+import { pageName } from './naming';
 
 const URL = `ws://127.0.0.1:${APP_PORT}`;
 const KEEPALIVE_MS = 20_000;
@@ -7,7 +8,7 @@ const KEEPALIVE_MS = 20_000;
 let socket: WebSocket | null = null;
 let recording = false;
 let keepalive: ReturnType<typeof setInterval> | undefined;
-let lastTitle = new Map<number, string>();
+let lastPage = new Map<number, string>();
 
 function isConnected(): boolean {
   return socket?.readyState === WebSocket.OPEN;
@@ -50,7 +51,7 @@ async function setRecording(next: boolean): Promise<void> {
   recording = next;
   await chrome.storage.session.set({ recording });
   updateBadge();
-  if (recording) lastTitle = new Map();
+  if (recording) lastPage = new Map();
   const tabs = await chrome.tabs.query({});
   for (const tab of tabs) {
     if (tab.id === undefined) continue;
@@ -89,14 +90,15 @@ chrome.tabs.onZoomChange.addListener(({ tabId, newZoomFactor }) => {
   chrome.tabs.sendMessage(tabId, { type: 'zoom', zoom: newZoomFactor }).catch(() => {});
 });
 
-// "Open 'Pricing – Acme'" when a page finishes loading during a recording.
+// "Open 'acme.com/pricing'" when a page finishes loading during a recording.
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
-  if (!recording || info.status !== 'complete' || !tab.active || !tab.title) return;
-  if (lastTitle.get(tabId) === tab.title) return;
-  const first = !lastTitle.has(tabId);
-  lastTitle.set(tabId, tab.title);
+  if (!recording || info.status !== 'complete' || !tab.active) return;
+  const name = pageName(tab.url) ?? tab.title;
+  if (!name || lastPage.get(tabId) === name) return;
+  const first = !lastPage.has(tabId);
+  lastPage.set(tabId, name);
   if (first && tab.url?.startsWith('chrome')) return;
-  sendToApp({ type: 'event', event: { kind: 'step', t: Date.now(), action: 'navigate', role: 'page', name: tab.title } });
+  sendToApp({ type: 'event', event: { kind: 'step', t: Date.now(), action: 'navigate', role: 'page', name } });
 });
 
 // Service workers sleep; the alarm wakes this one up to reconnect when the app starts.

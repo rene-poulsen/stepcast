@@ -6,7 +6,7 @@ verified with the signing key below.
 
 ## One-time setup
 
-1. Create the public repo **rene-poulsen/stepcast** on GitHub and push `main`.
+1. Create the public repo **rene-poulsen/stepcast** on GitHub and push `main` (done).
 2. Add one repository secret (**Settings → Secrets and variables → Actions → New repository secret**):
 
    | Name | Value |

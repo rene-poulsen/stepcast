@@ -33,9 +33,8 @@ const json = (file, update) => {
 const text = (file, pattern, replacement) => {
   const path = join(root, file);
   const before = readFileSync(path, 'utf8');
-  const after = before.replace(pattern, replacement);
-  if (before === after) fail(`Could not find the version in ${file}`);
-  writeFileSync(path, after);
+  if (!pattern.test(before)) fail(`Could not find the version in ${file}`);
+  writeFileSync(path, before.replace(pattern, replacement));
   return file;
 };
 
@@ -52,7 +51,8 @@ execFileSync('cargo', ['update', '--workspace', '--offline'], { cwd: join(root, 
 files.push('app/src-tauri/Cargo.lock');
 
 git('add', ...files);
-git('commit', '-m', `chore: release v${version}`);
+// Nothing to commit when releasing the version the files already have (like the first release).
+if (git('diff', '--cached', '--name-only')) git('commit', '-m', `chore: release v${version}`);
 git('tag', '-a', `v${version}`, '-m', `v${version}`);
 git('push', 'origin', 'main', '--follow-tags');
 console.log(`✓ Pushed v${version}. GitHub Actions is building the release:`);

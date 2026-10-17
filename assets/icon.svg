@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <clipPath id="label"><rect x="140" y="318" width="744" height="150" rx="18"/></clipPath>
+    <clipPath id="window"><rect x="196" y="508" width="632" height="172" rx="28"/></clipPath>
+  </defs>
+  <rect width="1024" height="1024" rx="228" fill="#F3EFE6"/>
+  <!-- cassette body -->
+  <rect x="72" y="270" width="880" height="484" rx="44" fill="#1E1C24"/>
+  <rect x="72" y="722" width="880" height="32" rx="16" fill="#2C2933"/>
+  <!-- label with 80s stripes -->
+  <g clip-path="url(#label)">
+    <rect x="140" y="318" width="744" height="150" fill="#FBF8F1"/>
+    <rect x="140" y="400" width="744" height="17" fill="#E5484D"/>
+    <rect x="140" y="417" width="744" height="17" fill="#F2884B"/>
+    <rect x="140" y="434" width="744" height="17" fill="#F5C451"/>
+    <rect x="140" y="451" width="744" height="17" fill="#3FB8A8"/>
+  </g>
+  <rect x="180" y="348" width="310" height="20" rx="10" fill="#D9D4C7"/>
+  <!-- window: reels and tape -->
+  <g clip-path="url(#window)">
+    <rect x="196" y="508" width="632" height="172" fill="#0D0C11"/>
+    <circle cx="318" cy="594" r="86" fill="#4A3B33"/>
+    <circle cx="706" cy="594" r="58" fill="#4A3B33"/>
+    <rect x="318" y="664" width="388" height="16" fill="#4A3B33"/>
+  </g>
+  <rect x="196" y="508" width="632" height="172" rx="28" fill="none" stroke="#38343F" stroke-width="10"/>
+  <g fill="#F1EEE7">
+    <circle cx="318" cy="594" r="36"/>
+    <circle cx="706" cy="594" r="36"/>
+  </g>
+  <g fill="#0D0C11">
+    <circle cx="318" cy="594" r="13"/>
+    <circle cx="706" cy="594" r="13"/>
+    <rect x="313" y="558" width="10" height="17" rx="3"/>
+    <rect x="313" y="613" width="10" height="17" rx="3"/>
+    <rect x="282" y="589" width="17" height="10" rx="3"/>
+    <rect x="337" y="589" width="17" height="10" rx="3"/>
+    <rect x="701" y="558" width="10" height="17" rx="3"/>
+    <rect x="701" y="613" width="10" height="17" rx="3"/>
+    <rect x="670" y="589" width="17" height="10" rx="3"/>
+    <rect x="725" y="589" width="17" height="10" rx="3"/>
+  </g>
+  <g fill="#3A3642">
+    <circle cx="110" cy="308" r="11"/>
+    <circle cx="914" cy="308" r="11"/>
+    <circle cx="110" cy="690" r="11"/>
+    <circle cx="914" cy="690" r="11"/>
+  </g>
+</svg>

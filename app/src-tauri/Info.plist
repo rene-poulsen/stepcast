@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSCameraUsageDescription</key>
+  <string>Stepcast shows your webcam next to the screen recording.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Stepcast records your voice while you explain.</string>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>Stepcast records your screen.</string>
+</dict>
+</plist>

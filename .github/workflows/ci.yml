@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+      - run: npm ci
+      - run: npm test
+      - run: npm run check -w app
+      - run: npm run check -w extension
+      - run: npm run build:extension
+      # Tauri's build script only checks that the sidecar exists; the tests never run it.
+      - run: mkdir -p app/src-tauri/binaries && touch app/src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe
+        shell: bash
+      - run: cargo test
+        working-directory: app/src-tauri

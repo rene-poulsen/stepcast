@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Stepcast playground</title>
+    <style>
+      body { font: 15px/1.5 -apple-system, 'Segoe UI', sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; color: #37352f; }
+      nav a { margin-right: 16px; }
+      section { margin: 28px 0; }
+      [role='tablist'] button { padding: 6px 12px; border: 1px solid #ddd; background: #fff; border-radius: 6px; }
+      [role='tablist'] button[aria-selected='true'] { background: #37352f; color: #fff; }
+      label { display: block; margin: 10px 0 4px; }
+      input[type='text'], input[type='email'], input[type='password'], textarea, select { padding: 6px 8px; width: 280px; }
+      .card { padding: 12px; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; display: inline-block; }
+      .card span { font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>Stepcast playground</h1>
+    <p>Every element here should produce a label in a recording.</p>
+
+    <nav>
+      <a href="#products">Products</a>
+      <a href="#about">About us</a>
+      <a href="#contact" aria-label="Contact page"><svg width="14" height="14"><circle cx="7" cy="7" r="6" /></svg></a>
+    </nav>
+
+    <section>
+      <button id="save">Save changes</button>
+      <button aria-label="Close dialog">×</button>
+      <input type="submit" value="Send order" />
+      <div class="card" id="plan-pro" onclick="this.style.background='#eef'"><span>Pro plan</span> – 99 kr/month</div>
+    </section>
+
+    <section>
+      <div role="tablist">
+        <button role="tab" aria-selected="true" id="tab-overview">Overview</button>
+        <button role="tab" aria-selected="false" id="tab-pricing">Pricing</button>
+      </div>
+    </section>
+
+    <section>
+      <details>
+        <summary id="shipping">Shipping and returns</summary>
+        <p>Free shipping on orders over 500 kr.</p>
+      </details>
+      <button aria-expanded="false" aria-controls="faq1" id="faq-toggle">How do I cancel?</button>
+      <div id="faq1" hidden>Write to us.</div>
+    </section>
+
+    <section>
+      <form onsubmit="return false">
+        <label for="username">Username</label>
+        <input id="username" type="text" />
+        <label for="password">Password</label>
+        <input id="password" type="password" />
+        <label>Email <input id="email" type="email" /></label>
+        <input id="search" type="text" placeholder="Search products" />
+        <textarea id="first_name" name="first_name"></textarea>
+        <label><input id="terms" type="checkbox" /> I accept the terms &amp; conditions</label>
+        <label for="country">Country</label>
+        <select id="country">
+          <option>Denmark</option>
+          <option>Sweden</option>
+        </select>
+        <p>
+          <label><input type="radio" name="delivery" id="pickup" /> Pick up in store</label>
+          <label><input type="radio" name="delivery" id="home" /> Home delivery</label>
+        </p>
+        <div role="checkbox" aria-checked="false" tabindex="0" id="newsletter">Send me the newsletter</div>
+      </form>
+    </section>
+
+    <script>
+      document.querySelectorAll('[role=tab]').forEach((tab) =>
+        tab.addEventListener('click', () =>
+          document.querySelectorAll('[role=tab]').forEach((t) => t.setAttribute('aria-selected', String(t === tab))),
+        ),
+      );
+      const faq = document.getElementById('faq-toggle');
+      faq.addEventListener('click', () => {
+        const open = faq.getAttribute('aria-expanded') === 'true';
+        faq.setAttribute('aria-expanded', String(!open));
+        document.getElementById('faq1').hidden = open;
+      });
+      const nl = document.getElementById('newsletter');
+      nl.addEventListener('click', () => nl.setAttribute('aria-checked', String(nl.getAttribute('aria-checked') !== 'true')));
+    </script>
+  </body>
+</html>

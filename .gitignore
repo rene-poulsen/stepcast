@@ -1,0 +1,36 @@
+# Dependencies and builds
+node_modules/
+dist/
+target/
+app/src-tauri/gen/
+app/src-tauri/binaries/ffmpeg*
+stepcast-extension-*.zip
+coverage/
+*.tsbuildinfo
+
+# Secrets: the updater signing key belongs in ~/.tauri and a GitHub secret, never here
+*.key
+*.key.pub
+*.pem
+
+# Test recordings and exports
+*.mp4
+*.mkv
+*.webm
+
+# Local settings
+.claude/settings.local.json
+*.local.*
+.env
+.env.*
+
+# Logs and temp
+*.log
+*.tmp
+
+# OS / editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

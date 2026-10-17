@@ -180,6 +180,22 @@ pub struct CamSpec {
     /// Which part of the camera image shows when it is cropped to the box: 0 = left, 1 = right.
     #[serde(default = "centre")]
     pub focus_x: f64,
+    /// Corner radius cut out of the camera image when it floats over the screen; 0 for none.
+    #[serde(default)]
+    pub radius: i64,
+}
+
+/// Filters that make the camera's corners transparent (anti-aliased by one pixel), so it can sit on
+/// top of the screen. Empty for square corners.
+fn round_corners(radius: i64) -> String {
+    if radius <= 0 {
+        return String::new();
+    }
+    let r = radius;
+    format!(
+        ",format=yuva420p,geq=lum='lum(X\\,Y)':cb='cb(X\\,Y)':cr='cr(X\\,Y)':\
+         a='clip(255*({r}+0.5-hypot(max(0\\,abs(X+0.5-W/2)-(W/2-{r}))\\,max(0\\,abs(Y+0.5-H/2)-(H/2-{r}))))\\,0\\,255)'"
+    )
 }
 
 fn centre() -> f64 {
@@ -307,9 +323,9 @@ pub fn build_graph(spec: &ExportSpec, fonts_dir: &Path) -> String {
         let eof = if spec.screen_box.is_some() { "repeat" } else { "endall" };
         parts.push(format!(
             "[{cam_in}:v]fps=30,select='{select}',setpts=N/FRAME_RATE/TB,\
-             scale={}:{}:force_original_aspect_ratio=increase,crop={}:{}:(iw-ow)*{fx:.3}:(ih-oh)/2,setsar=1[cam];\
+             scale={}:{}:force_original_aspect_ratio=increase,crop={}:{}:(iw-ow)*{fx:.3}:(ih-oh)/2,setsar=1{}[cam];\
              [{base}][cam]overlay={}:{}:eof_action={eof}[withcam]",
-            b.w, b.h, b.w, b.h, b.x, b.y
+            b.w, b.h, b.w, b.h, round_corners(cam.radius), b.x, b.y
         ));
         base = "withcam".to_string();
     }
@@ -417,6 +433,7 @@ mod tests {
             video: true,
             audio: true,
             focus_x: 0.5,
+            radius: 0,
         });
         let g = build_graph(&s, Path::new("/fonts"));
         assert!(g.contains("scale=1412:794"));
@@ -425,6 +442,25 @@ mod tests {
         assert!(g.contains("[1:v]fps=30"));
         assert!(g.contains("overlay=1468:258:eof_action=repeat"));
         assert!(g.contains("[1:a]aselect="));
+        assert!(!g.contains("geq"));
+    }
+
+    #[test]
+    fn floating_webcam_gets_transparent_corners() {
+        let mut s = spec();
+        s.screen_box = Some(BoxSpec { x: 0, y: 0, w: 1920, h: 1080 });
+        s.cam = Some(CamSpec {
+            area: BoxSpec { x: 1480, y: 776, w: 384, h: 288 },
+            offset: 0.0,
+            video: true,
+            audio: false,
+            focus_x: 0.5,
+            radius: 17,
+        });
+        let g = build_graph(&s, Path::new("/fonts"));
+        assert!(g.contains("setsar=1,format=yuva420p,geq=lum='lum(X\\,Y)'"));
+        assert!(g.contains("a='clip(255*(17+0.5-hypot("));
+        assert!(g.contains("[lay][cam]overlay=1480:776"));
     }
 
     #[test]
@@ -440,6 +476,7 @@ mod tests {
             video: true,
             audio: true,
             focus_x: 0.0,
+            radius: 0,
         });
         let g = build_graph(&s, Path::new("/fonts"));
         assert!(g.starts_with("color=c=0xF4F4F2:s=1080x1920:r=30[bg]"));

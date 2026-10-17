@@ -86,6 +86,18 @@ const en = {
   top: 'Top',
   bottom: 'Bottom',
   framing: 'Framing',
+  arrange: 'Layout',
+  sideBySide: 'Side by side',
+  stacked: 'Stacked',
+  custom: 'Custom',
+  overlay: 'Overlay',
+  customHint: 'Drag the screen or webcam in the preview to move it. Drag a corner to resize.',
+  overlayHint: 'Drag the webcam in the preview to move it. Drag a corner to resize.',
+  resetLayout: 'Reset',
+  align: 'Align',
+  alignTop: 'Top',
+  alignCenter: 'Centre',
+  alignBottom: 'Bottom',
 };
 
 type Strings = typeof en;
@@ -175,6 +187,18 @@ const da: Strings = {
   top: 'Øverst',
   bottom: 'Nederst',
   framing: 'Udsnit',
+  arrange: 'Layout',
+  sideBySide: 'Side om side',
+  stacked: 'Stablet',
+  custom: 'Tilpasset',
+  overlay: 'Oven på',
+  customHint: 'Træk skærmen eller webcam i forhåndsvisningen for at flytte dem. Træk i et hjørne for at ændre størrelse.',
+  overlayHint: 'Træk webcam i forhåndsvisningen for at flytte det. Træk i et hjørne for at ændre størrelse.',
+  resetLayout: 'Nulstil',
+  align: 'Placering',
+  alignTop: 'Øverst',
+  alignCenter: 'Midt',
+  alignBottom: 'Nederst',
 };
 
 export function strings(lang: Lang): Strings {

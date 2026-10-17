@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildAss, overlayItems, roundedRect } from './ass';
 import { exportSpec, projectLayout, render } from './exporter';
 import { outputSize } from './formats';
-import { computeLayout, mapRect, type Layout } from './layout';
+import { computeLayout, mapRect, snapTo, type Layout } from './layout';
 import { phrase } from './phrases';
 import { blurSegments, buildSteps, defaultEdits, normalizeEdits, viewsFor } from './steps';
 import { keepRanges, outputDuration, toOutput, toSource } from './timeline';
@@ -28,7 +28,16 @@ const project: Project = {
 };
 const screen = project.screen as Screen;
 const camOnly: Project = { ...project, screen: null, events: [], pauses: [] };
-const cam = (side: CameraEdit['side'] = 'right'): CameraEdit => ({ split: 0.25, side, focusX: 0.5 });
+const cam = (side: CameraEdit['side'] = 'right', more: Partial<CameraEdit> = {}): CameraEdit => ({
+  arrange: 'auto',
+  custom: null,
+  float: null,
+  split: 0.25,
+  side,
+  align: 'center',
+  focusX: 0.5,
+  ...more,
+});
 const HD = { width: 1920, height: 1080 };
 const VERTICAL = { width: 1080, height: 1920 };
 const boxes = (l: Layout) => [l.screen, l.cam].filter((b): b is Box => !!b);
@@ -108,6 +117,55 @@ describe('layout', () => {
     const l = computeLayout({ width: 1080, height: 1080 }, HD, null);
     expect(l.screen).toEqual({ x: 0, y: 236, w: 1080, h: 608 });
   });
+  it('lines the webcam up with the top or bottom of the screen side by side', () => {
+    // A wide webcam panel is taller than the screen, so it stops at the margin.
+    for (const split of [0.25, 0.4]) {
+      const top = computeLayout(HD, HD, cam('right', { split, align: 'top' }));
+      const bottom = computeLayout(HD, HD, cam('right', { split, align: 'bottom' }));
+      const centre = computeLayout(HD, HD, cam('right', { split }));
+      const m = 28;
+      const inside = (y: number, h: number) => Math.min(1080 - m - h, Math.max(m, y));
+      expect(top.cam!.y).toBe(inside(top.screen!.y, top.cam!.h));
+      expect(bottom.cam!.y).toBe(inside(bottom.screen!.y + bottom.screen!.h - bottom.cam!.h, bottom.cam!.h));
+      expect(Math.abs(centre.cam!.y - (1080 - centre.cam!.h) / 2)).toBeLessThanOrEqual(1);
+      expect(top.screen).toEqual(centre.screen);
+    }
+  });
+  it('fills the frame with the screen and floats the webcam over it in overlay mode', () => {
+    const l = computeLayout(HD, HD, cam('right', { arrange: 'overlay' }));
+    expect(l.screen).toEqual({ x: 0, y: 0, w: 1920, h: 1080 });
+    const c = l.cam!;
+    expect(c.x + c.w).toBe(1920 - 28);
+    expect(c.y + c.h).toBe(1080 - 28);
+    expect(l.camFloat).toBe(true);
+    const moved = computeLayout(HD, HD, cam('right', { arrange: 'overlay', float: { x: 0.1, y: 0.2, w: 0.25, h: 0.25 } }));
+    expect(moved.cam).toEqual({ x: 192, y: 216, w: 480, h: 270 });
+    // Kept inside the frame and above a minimum size.
+    const out = computeLayout(HD, HD, cam('right', { arrange: 'overlay', float: { x: 0.95, y: -1, w: 0.01, h: 0.01 } }));
+    expect(out.cam).toEqual({ x: 1920 - 108, y: 0, w: 108, h: 108 });
+  });
+  it('starts a custom layout from the automatic one and then uses the placed boxes', () => {
+    const auto = computeLayout(HD, HD, cam('right'));
+    const fresh = computeLayout(HD, HD, cam('right', { arrange: 'custom' }));
+    expect({ ...fresh, camFloat: false }).toEqual(auto);
+    const l = computeLayout(HD, HD, cam('right', { arrange: 'custom', custom: { screen: { x: 0, y: 0, w: 0.5, h: 0 }, cam: { x: 0.5, y: 0.5, w: 0.5, h: 0.5 } } }));
+    // The screen keeps its shape whatever height was stored.
+    expect(l.screen).toEqual({ x: 0, y: 0, w: 960, h: 540 });
+    expect(l.cam).toEqual({ x: 960, y: 540, w: 960, h: 540 });
+    // Only floating webcams get their corners cut in ffmpeg; side by side ones are masked in the overlay.
+    const radius = (camera: CameraEdit) => {
+      const edits = { ...defaultEdits(project, 'en'), camera };
+      return exportSpec(project, edits, render(project, edits, measure)).cam!.radius;
+    };
+    expect(radius(cam('right', { arrange: 'overlay' }))).toBeGreaterThan(0);
+    expect(radius(cam('right'))).toBe(0);
+  });
+  it('snaps to the edges, the margin and the middle', () => {
+    expect(snapTo(5, 1920, 28, 8)).toBe(0);
+    expect(snapTo(31, 1920, 28, 8)).toBe(28);
+    expect(snapTo(955, 1920, 28, 8)).toBe(960);
+    expect(snapTo(500, 1920, 28, 8)).toBeNull();
+  });
   it('maps desktop coordinates into the scaled screen', () => {
     const l = computeLayout(HD, HD, cam('left'));
     const r = mapRect({ x: 1920 + 960, y: 540, w: 100, h: 0 }, screen, l.screen!);
@@ -133,7 +191,7 @@ describe('formats and views', () => {
     const e = normalizeEdits(project, saved, 'en');
     expect(e.view).toBe('screen');
     expect(e.format).toBe('original');
-    expect(e.camera).toEqual({ split: 0.3, side: 'left', focusX: 0.5 });
+    expect(e.camera).toEqual({ arrange: 'auto', custom: null, float: null, split: 0.3, side: 'left', align: 'center', focusX: 0.5 });
     expect(normalizeEdits(camOnly, { format: 'original', view: 'both' }, 'en')).toMatchObject({ view: 'cam', format: '16:9' });
   });
   it('can show only the webcam of a screen recording', () => {

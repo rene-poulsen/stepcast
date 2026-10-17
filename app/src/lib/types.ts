@@ -63,11 +63,32 @@ export interface Screen {
 /** What the video shows: screen and webcam, only the screen, or only the webcam. */
 export type View = 'both' | 'screen' | 'cam';
 
+/**
+ * How the screen and webcam are placed: `auto` side by side or stacked with margins, `custom` both
+ * placed by hand, `overlay` the screen fills the frame and the webcam floats on top.
+ */
+export type Arrange = 'auto' | 'custom' | 'overlay';
+
+/** A box in fractions of the output frame, so it carries over between formats. */
+export interface FracBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface CameraEdit {
+  arrange: Arrange;
+  /** Hand-placed boxes for `custom`; null until the user moves something (it starts from `auto`). */
+  custom: { screen: FracBox; cam: FracBox } | null;
+  /** The floating webcam for `overlay`; null for the default bottom corner. */
+  float: FracBox | null;
   /** Share of the width taken by the webcam panel (side-by-side layouts). */
   split: number;
   /** Where the webcam goes; left/right in landscape formats, top/bottom in portrait ones. */
   side: 'left' | 'right' | 'top' | 'bottom';
+  /** Side by side: the webcam centred in the frame, or lined up with the top or bottom of the screen. */
+  align: 'center' | 'top' | 'bottom';
   /** Which part of the webcam image shows when it is cropped: 0 = left edge, 1 = right edge. */
   focusX: number;
 }

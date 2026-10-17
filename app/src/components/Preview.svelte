@@ -3,7 +3,7 @@
   import { onMount } from 'svelte';
   import { fileUrl, joinPath } from '../lib/api';
   import type { Overlay as OverlayItems } from '../lib/ass';
-  import { BACKGROUND, type Layout } from '../lib/layout';
+  import { BACKGROUND, layoutMargin, minCamSide, minScreenWidth, snapTo, type Layout } from '../lib/layout';
   import type { BlurSegment } from '../lib/steps';
   import { nextKeepStart, toOutput, type Range } from '../lib/timeline';
   import type { Box, Project } from '../lib/types';
@@ -20,6 +20,8 @@
     blurs = [],
     time = $bindable(0),
     playing = $bindable(false),
+    movable = [],
+    onplace,
   }: {
     dir: string;
     project: Project;
@@ -31,7 +33,98 @@
     blurs?: BlurSegment[];
     time?: number;
     playing?: boolean;
+    /** Boxes the user can drag and resize in the preview, the topmost last. */
+    movable?: Target[];
+    /** A moved or resized box, in output pixels. */
+    onplace?: (target: Target, box: Box) => void;
   } = $props();
+
+  type Target = 'screen' | 'cam';
+  type Grip = 'move' | 'nw' | 'ne' | 'sw' | 'se';
+  const GRIPS = ['nw', 'ne', 'sw', 'se'] as const;
+
+  let stageEl = $state<HTMLDivElement | null>(null);
+  let dragging = $state<Target | null>(null);
+
+  /** Drags a box (or one of its corners) with snapping to the edges, the margin and the middle; Alt turns snapping off. */
+  function startDrag(e: PointerEvent, target: Target, grip: Grip) {
+    const start = layout[target];
+    if (!stageEl || !start || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const scale = layout.width / stageEl.getBoundingClientRect().width;
+    const W = layout.width;
+    const H = layout.height;
+    const margin = layoutMargin(layout);
+    const threshold = 8 * scale;
+    const ratio = start.h / start.w;
+    let moved = false;
+
+    // How far to shift so the nearest of these positions lands on a snap line.
+    const nudge = (values: number[], size: number, alt: boolean) => {
+      if (alt) return 0;
+      let best = 0;
+      let found = false;
+      for (const v of values) {
+        const line = snapTo(v, size, margin, threshold);
+        if (line !== null && (!found || Math.abs(line - v) < Math.abs(best))) {
+          best = line - v;
+          found = true;
+        }
+      }
+      return best;
+    };
+
+    const move = (ev: PointerEvent) => {
+      const dx = (ev.clientX - e.clientX) * scale;
+      const dy = (ev.clientY - e.clientY) * scale;
+      if (!moved && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 3) return;
+      moved = true;
+      dragging = target;
+      let { x, y, w, h } = start;
+      if (grip === 'move') {
+        x = Math.max(0, Math.min(W - w, x + dx));
+        y = Math.max(0, Math.min(H - h, y + dy));
+        x += nudge([x, x + w / 2, x + w], W, ev.altKey);
+        y += nudge([y, y + h / 2, y + h], H, ev.altKey);
+      } else {
+        const east = grip.endsWith('e');
+        const south = grip.startsWith('s');
+        // The dragged corner moves; the opposite one stays put.
+        let cx = Math.max(0, Math.min(W, (east ? x + w : x) + dx));
+        let cy = Math.max(0, Math.min(H, (south ? y + h : y) + dy));
+        cx += nudge([cx], W, ev.altKey);
+        cy += nudge([cy], H, ev.altKey);
+        const ax = east ? x : x + w;
+        const ay = south ? y : y + h;
+        w = Math.abs(cx - ax);
+        h = Math.abs(cy - ay);
+        if (target === 'screen') {
+          // The screen keeps its shape: follow whichever side was dragged further.
+          w = Math.max(w, h / ratio);
+          w = Math.min(w, east ? W - ax : ax, (south ? H - ay : ay) / ratio);
+          w = Math.max(w, minScreenWidth(layout));
+          h = w * ratio;
+        } else {
+          const min = minCamSide(layout);
+          w = Math.max(min, w);
+          h = Math.max(min, h);
+        }
+        x = east ? ax : ax - w;
+        y = south ? ay : ay - h;
+      }
+      onplace?.(target, { x, y, w, h });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      dragging = null;
+      // A click without a drag still plays and pauses.
+      if (!moved) toggle();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
 
   let screenEl = $state<HTMLVideoElement | null>(null);
   let camEl = $state<HTMLVideoElement | null>(null);
@@ -114,6 +207,7 @@
 <div class="frame">
   <div
     class="stage"
+    bind:this={stageEl}
     style="aspect-ratio:{layout.width}/{layout.height};--ar:{layout.width / layout.height};background:#{BACKGROUND}"
   >
     {#if screenSrc}
@@ -160,6 +254,22 @@
       ></video>
     {/if}
     <Overlay items={overlay} width={layout.width} height={layout.height} t={out} />
+    {#each movable as target (target)}
+      {@const b = layout[target]}
+      {#if b}
+        <div
+          class="mover"
+          class:dragging={dragging === target}
+          style={pct(b)}
+          role="presentation"
+          onpointerdown={(e) => startDrag(e, target, 'move')}
+        >
+          {#each GRIPS as grip (grip)}
+            <span class="grip {grip}" role="presentation" onpointerdown={(e) => startDrag(e, target, grip)}></span>
+          {/each}
+        </div>
+      {/if}
+    {/each}
   </div>
 </div>
 
@@ -216,6 +326,58 @@
     width: 1px;
     height: 1px;
     opacity: 0;
+  }
+
+  .mover {
+    position: absolute;
+    cursor: move;
+    touch-action: none;
+  }
+
+  .mover:hover,
+  .mover.dragging {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+  }
+
+  .grip {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    margin: -6px;
+    border: 2px solid var(--accent);
+    border-radius: 3px;
+    background: #fff;
+    opacity: 0;
+  }
+
+  .mover:hover .grip,
+  .mover.dragging .grip {
+    opacity: 1;
+  }
+
+  .grip.nw {
+    left: 0;
+    top: 0;
+    cursor: nwse-resize;
+  }
+
+  .grip.ne {
+    right: 0;
+    top: 0;
+    cursor: nesw-resize;
+  }
+
+  .grip.sw {
+    left: 0;
+    bottom: 0;
+    cursor: nesw-resize;
+  }
+
+  .grip.se {
+    right: 0;
+    bottom: 0;
+    cursor: nwse-resize;
   }
 
   .blur {

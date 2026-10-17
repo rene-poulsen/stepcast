@@ -57,6 +57,7 @@ export function exportSpec(project: Project, edits: Edits, r: Render): ExportSpe
           video: !!r.layout.cam,
           audio: cam.audio,
           focusX: r.layout.camFocus,
+          radius: r.layout.camFloat ? r.layout.camRadius : 0,
         }
       : null,
     background: BACKGROUND,

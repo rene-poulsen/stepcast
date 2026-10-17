@@ -242,7 +242,8 @@ export function buildAss(input: AssInput): string {
     );
   }
 
-  if (layout.cam && layout.camRadius > 0) {
+  // A floating webcam is rounded in the export filtergraph instead, since it may be over the screen.
+  if (layout.cam && layout.camRadius > 0 && !layout.camFloat) {
     const { x, y, w, h } = layout.cam;
     const r = layout.camRadius;
     const corners: [number, number, boolean, boolean][] = [

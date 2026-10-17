@@ -33,7 +33,7 @@ export function defaultEdits(project: Project, lang: Lang, format?: FormatId): E
     steps: {},
     view: viewsFor(project)[0] ?? 'screen',
     format: format ?? (project.screen ? 'original' : '16:9'),
-    camera: { split: 0.25, side: 'right', focusX: 0.5 },
+    camera: { arrange: 'auto', custom: null, float: null, split: 0.25, side: 'right', align: 'center', focusX: 0.5 },
     blur: true,
     ripple: true,
     highlight: true,

@@ -10,10 +10,10 @@
   import { loadMeasureFont, measure } from '../lib/measure';
   import { settings } from '../lib/settings.svelte';
   import { formatsFor } from '../lib/formats';
-  import { isStacked } from '../lib/layout';
+  import { isStacked, toFrac } from '../lib/layout';
   import { blurSegments, normalizeEdits, viewsFor } from '../lib/steps';
   import { formatTime, toOutput } from '../lib/timeline';
-  import type { Edits, Project } from '../lib/types';
+  import type { Box, Edits, Project } from '../lib/types';
   import FormatPicker from './FormatPicker.svelte';
   import Icon from './Icon.svelte';
   import Preview from './Preview.svelte';
@@ -41,6 +41,18 @@
   const viewLabel = { both: () => t.sourceBoth, screen: () => t.sourceScreen, cam: () => t.sourceCam };
   const stacked = $derived(!!r && isStacked(r.layout));
   const sides = $derived(stacked ? (['top', 'bottom'] as const) : (['left', 'right'] as const));
+  const arranges = ['auto', 'custom', 'overlay'] as const;
+  const aligns = [
+    ['top', 'alignTop'],
+    ['center', 'alignCenter'],
+    ['bottom', 'alignBottom'],
+  ] as const;
+  /** What can be dragged in the preview: both boxes in a custom layout, the webcam over the screen. */
+  const movable = $derived.by((): ('screen' | 'cam')[] => {
+    if (!r?.layout.screen || !r.layout.cam || !edits) return [];
+    if (edits.camera.arrange === 'custom') return ['screen', 'cam'];
+    return edits.camera.arrange === 'overlay' ? ['cam'] : [];
+  });
   /** Steps and effects belong to the screen, so they are hidden when it isn't shown. */
   const showsScreen = $derived(!!r?.layout.screen);
   const current = $derived.by(() => {
@@ -57,6 +69,26 @@
     saveTimer = setTimeout(() => {
       if (project && edits) api.saveProject(dir, { ...$state.snapshot(project), edits: $state.snapshot(edits) });
     }, 400);
+  }
+
+  /** Stores a box dragged in the preview, as fractions of the frame. */
+  function place(target: 'screen' | 'cam', box: Box) {
+    if (!edits || !r?.layout.screen || !r.layout.cam) return;
+    const cam = edits.camera;
+    if (cam.arrange === 'overlay') {
+      cam.float = toFrac(box, r.layout);
+    } else {
+      cam.custom = { screen: toFrac(r.layout.screen, r.layout), cam: toFrac(r.layout.cam, r.layout) };
+      cam.custom[target] = toFrac(box, r.layout);
+    }
+    persist();
+  }
+
+  function resetPlacement() {
+    if (!edits) return;
+    if (edits.camera.arrange === 'overlay') edits.camera.float = null;
+    else edits.camera.custom = null;
+    persist();
   }
 
   function setStep(index: number, patch: { text?: string; deleted?: boolean }) {
@@ -197,6 +229,8 @@
             blurs={edits.blur ? blurs : []}
             bind:time
             bind:playing
+            {movable}
+            onplace={place}
           />
         </div>
         <div class="transport">
@@ -235,10 +269,34 @@
             <FormatPicker formats={formatsFor(!!project.screen)} bind:value={edits.format} lang={edits.lang} onchange={persist} />
           </div>
           {#if r.layout.screen && r.layout.cam}
+            <div class="views">
+              <div class="segmented" role="radiogroup" aria-label={t.arrange}>
+                {#each arranges as a (a)}
+                  <button class:on={edits.camera.arrange === a} onclick={() => ((edits!.camera.arrange = a), persist())}>
+                    {a === 'auto' ? (stacked ? t.stacked : t.sideBySide) : t[a]}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {/if}
+          {#if r.layout.screen && r.layout.cam && edits.camera.arrange !== 'auto'}
+            <div class="row">
+              <span class="muted small">{edits.camera.arrange === 'custom' ? t.customHint : t.overlayHint}</span>
+              <button class="btn ghost" onclick={resetPlacement}>{t.resetLayout}</button>
+            </div>
+          {:else if r.layout.screen && r.layout.cam}
             {#if !stacked}
               <div class="row">
                 <span class="muted">{t.camSize}</span>
                 <input type="range" min="0.15" max="0.4" step="0.01" bind:value={edits.camera.split} onchange={persist} />
+              </div>
+              <div class="row">
+                <span class="muted">{t.align}</span>
+                <div class="segmented">
+                  {#each aligns as [a, label] (a)}
+                    <button class:on={edits.camera.align === a} onclick={() => ((edits!.camera.align = a), persist())}>{t[label]}</button>
+                  {/each}
+                </div>
               </div>
             {/if}
             <div class="row">

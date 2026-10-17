@@ -31,6 +31,8 @@ export interface ExportSpec {
     video: boolean;
     audio: boolean;
     focusX: number;
+    /** Corner radius cut out of the webcam itself (floating webcams); 0 for none. */
+    radius: number;
   } | null;
   background: string;
   duration: number;

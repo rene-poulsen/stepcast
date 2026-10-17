@@ -563,7 +563,8 @@
   }
 
   .views button {
-    flex: 1;
+    flex: auto;
+    white-space: nowrap;
   }
 
   .row input[type='range'] {

@@ -46,8 +46,8 @@
 <style>
   .formats {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
-    gap: 6px;
+    grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+    gap: 4px;
   }
 
   button {
@@ -62,8 +62,9 @@
     border-radius: var(--radius-sm);
     background: var(--bg);
     color: var(--muted);
-    font-size: 11px;
+    font-size: 10.5px;
     font-variant-numeric: tabular-nums;
+    overflow: hidden;
   }
 
   button:hover {

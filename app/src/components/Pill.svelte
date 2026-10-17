@@ -204,6 +204,8 @@
 
   /* What a webcam-only video keeps: the rest is darkened. */
   .guide {
+    /* Above the mirrored video, whose transform paints it in a higher layer. */
+    position: relative;
     place-self: center;
     max-width: 100%;
     max-height: 100%;

@@ -4,6 +4,10 @@ A free screen recorder for support videos. Record what you do in the browser and
 every step: **"Click 'Products'"**, **"Click 'About us' link"**, **"Enter 'Username'"**, **"Check 'I accept the
 terms & conditions'"**. Your customers can follow along without guessing where you clicked.
 
+[![Example recording made with Stepcast: clicking through a website with step labels](docs/media/example.jpg)](docs/media/example.mp4)
+
+*Example recording made with Stepcast (click to play, 40 s).*
+
 - Records the **whole screen** as MP4 at your screen's own resolution, or just **an area or a window** of it
 - Labels in **English or Danish** (switch any time, even after recording)
 - Optional **webcam panel next to the screen**, never on top of it, with an adjustable size

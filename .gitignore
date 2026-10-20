@@ -15,6 +15,7 @@ coverage/
 
 # Test recordings and exports
 *.mp4
+!docs/media/*.mp4
 *.mkv
 *.webm
 

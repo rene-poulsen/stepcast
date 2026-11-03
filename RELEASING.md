@@ -49,3 +49,20 @@ users a "reload the extension" hint after updating.
   lets users install it with one click and update it automatically, instead of using Developer mode.
 - **Code signing:** an Apple Developer ID ($99/year) removes the macOS "can't be opened" step. A Windows signing
   certificate removes the SmartScreen warning. Neither is needed for the app or its updates to work.
+
+## macOS signing and permissions
+
+The updater key above only proves that an update comes from you. macOS also needs the app itself to be
+code-signed: it remembers Screen Recording, Camera and Microphone access by the app's signature.
+
+- Without a signature on the whole `.app` (v0.4.1 and older), macOS can't match the app to the access the
+  user gave. It asks on every recording, even with the switch on in System Settings, and recording never
+  starts.
+- `bundle.macOS.signingIdentity` is `"-"` in `app/src-tauri/tauri.conf.json`, so every build is signed ad hoc,
+  including the ffmpeg sidecar. Access then sticks between launches.
+- An ad hoc signature is tied to the exact build, so **after each update macOS asks for access again**. Users
+  allow it once and restart Stepcast. Mention this in the release notes.
+- A Developer ID signature stays the same across versions, so access survives updates. To switch, set
+  `signingIdentity` to the certificate's name and add the certificate and notarization secrets for
+  `tauri-action` (`APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`,
+  `APPLE_PASSWORD`, `APPLE_TEAM_ID`). See [Tauri's macOS signing guide](https://v2.tauri.app/distribute/sign/macos/).

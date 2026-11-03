@@ -32,7 +32,8 @@ MIT licensed. Free to use, change and share.
      Run anyway**.
    - **macOS** may say the app "can't be opened". Open **System Settings → Privacy & Security** and click
      **Open Anyway**. The first time you record, allow **Screen Recording**, **Camera** and **Microphone**
-     there too, then restart Stepcast.
+     there too, then restart Stepcast. After an update, macOS may ask for these again (see
+     [macOS keeps asking for permissions](#macos-keeps-asking-for-permissions)).
 3. Open Stepcast and follow **Install the browser extension**. It shows the folder to load in Chrome, Edge,
    Brave or Arc (`chrome://extensions` → Developer mode → **Load unpacked**).
 
@@ -62,6 +63,28 @@ and zoom. You only miss the automatic step labels.
 
 **Blur a field:** click the Stepcast extension icon → **Pick element to blur**, then click the field. Stepcast
 remembers it for that website. Password fields are always blurred.
+
+## macOS keeps asking for permissions
+
+macOS remembers Screen Recording, Camera and Microphone access by the app's signature. Stepcast is signed
+ad hoc (no paid Apple Developer ID), so:
+
+- Once you have allowed access, Stepcast keeps it until the next update.
+- Each update has a new signature, so macOS asks again. Allow the access once more and restart Stepcast.
+
+Version 0.4.1 and older weren't signed as a whole app. macOS then asks every time you record, even though
+the switch in System Settings is on, and the recording never starts. Update Stepcast, or fix the installed
+copy in Terminal:
+
+```bash
+codesign --force --deep --sign - /Applications/Stepcast.app
+tccutil reset ScreenCapture dk.renepoulsen.stepcast
+tccutil reset Camera dk.renepoulsen.stepcast
+tccutil reset Microphone dk.renepoulsen.stepcast
+```
+
+If Stepcast is still listed under **Screen Recording** in System Settings, remove it with **−**. Then open
+Stepcast, allow the access once and restart it.
 
 ## How it works
 

@@ -59,7 +59,8 @@
     "license": "MIT",
     "macOS": {
       "minimumSystemVersion": "12.3",
-      "infoPlist": "Info.plist"
+      "infoPlist": "Info.plist",
+      "signingIdentity": "-"
     },
     "windows": {
       "nsis": {

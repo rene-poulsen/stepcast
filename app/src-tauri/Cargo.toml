@@ -37,3 +37,11 @@ codegen-units = 1
 lto = true
 opt-level = "s"
 strip = true
+
+# Keep debug builds small (target/ was hitting 15-50 GB). File/line numbers
+# in panics are kept; third-party crates get no debug info.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
